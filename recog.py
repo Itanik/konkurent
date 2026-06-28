@@ -6,9 +6,10 @@ import pandas as pd
 import camelot
 from glob import glob
 
-from openpyxl import load_workbook, Workbook
+from copy import copy
+
+from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
-from openpyxl.styles import Alignment
 
 from normalizer import process_pdf_tables, STANDARD_COLUMNS
 
@@ -35,44 +36,6 @@ def extract_with_camelot(pdf_path):
             print(f"    Ошибка stream: {e}")
 
     return tables
-
-
-def write_merged_excel(output_path, file_data_list):
-    cols_per_file = len(STANDARD_COLUMNS)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "merged"
-
-    max_data_rows = max((df.shape[0] for df, _, _ in file_data_list), default=0)
-
-    col = 1
-    for df, orig_headers, _ in file_data_list:
-        filename = df.columns.get_level_values(0)[0]
-
-        cell = ws.cell(row=1, column=col, value=filename)
-        cell.alignment = Alignment(horizontal="center", wrap_text=True)
-        if max_data_rows > 0:
-            ws.merge_cells(
-                start_row=1, start_column=col,
-                end_row=1, end_column=col + cols_per_file - 1
-            )
-
-        for i, std_name in enumerate(STANDARD_COLUMNS):
-            header_text = orig_headers.get(std_name, std_name)
-            cell = ws.cell(row=2, column=col + i, value=header_text)
-            cell.alignment = Alignment(horizontal="center", wrap_text=True)
-
-        for row_idx in range(df.shape[0]):
-            for i, std_name in enumerate(STANDARD_COLUMNS):
-                val = df.iloc[row_idx][(filename, std_name)]
-                if pd.isna(val):
-                    continue
-                ws.cell(row=row_idx + 3, column=col + i, value=val)
-
-        col += cols_per_file
-
-    ws.column_dimensions["A"].width = 14
-    wb.save(output_path)
 
 
 BLOCK_SIZE = 6
@@ -115,7 +78,52 @@ def _parse_supplier_blocks(ws):
     return blocks
 
 
-def _find_or_create_block(ws, existing_blocks, first_meta_row, total_row):
+def _copy_style(src, dst):
+    try:
+        dst.font = copy(src.font)
+    except Exception:
+        pass
+    try:
+        dst.fill = copy(src.fill)
+    except Exception:
+        pass
+    try:
+        dst.border = copy(src.border)
+    except Exception:
+        pass
+    try:
+        dst.alignment = copy(src.alignment)
+    except Exception:
+        pass
+    try:
+        dst.number_format = src.number_format
+    except Exception:
+        pass
+
+
+def _copy_block_formatting(ws, dst_start, src_start, max_row):
+    for row in range(1, max_row + 1):
+        for i in range(BLOCK_SIZE):
+            _copy_style(ws.cell(row=row, column=src_start + i),
+                        ws.cell(row=row, column=dst_start + i))
+
+
+def _auto_fit_block_columns(ws, block_start, end_row):
+    for offset in range(1, BLOCK_SIZE):
+        col = block_start + offset
+        cl = get_column_letter(col)
+        rows_to_check = [2] + list(range(3, end_row + 1))
+        if offset == 5:
+            rows_to_check.append(end_row + 1)
+        max_len = 0
+        for r in rows_to_check:
+            val = ws.cell(row=r, column=col).value
+            if val is not None:
+                max_len = max(max_len, len(str(val)))
+        ws.column_dimensions[cl].width = min(max_len + 2, 40)
+
+
+def _find_or_create_block(ws, existing_blocks, first_meta_row, total_row, ref_block_start):
     for b in existing_blocks:
         if not b["name"]:
             b["name"] = "PLACEHOLDER"
@@ -137,6 +145,9 @@ def _find_or_create_block(ws, existing_blocks, first_meta_row, total_row):
     col_letter = get_column_letter(start + 4)
     ws.column_dimensions[col_letter].hidden = True
 
+    prop_col = get_column_letter(start)
+    ws.column_dimensions[prop_col].width = 32
+
     if first_meta_row and total_row:
         for mr in range(first_meta_row, total_row):
             ws.merge_cells(start_row=mr, start_column=start, end_row=mr, end_column=end)
@@ -147,15 +158,45 @@ def _find_or_create_block(ws, existing_blocks, first_meta_row, total_row):
     return block
 
 
+def _to_num(val):
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s in ("nan", "None", ""):
+        return None
+    try:
+        return float(s.replace(",", "."))
+    except (ValueError, TypeError):
+        return None
+
+
+def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
+    ws.cell(row=row_idx, column=block_start).value = row_data.get("Товар")
+    ws.cell(row=row_idx, column=block_start + 1).value = _to_num(row_data.get("Кол-во"))
+    ws.cell(row=row_idx, column=block_start + 2).value = row_data.get("Ед. изм")
+
+    sum_col = get_column_letter(block_start + 5)
+    qty_col = get_column_letter(block_start + 1)
+    ws.cell(row=row_idx, column=block_start + 3).value = (
+        f'=IFERROR({sum_col}{row_idx}/{qty_col}{row_idx},"")'
+    )
+
+    ws.cell(row=row_idx, column=block_start + 4).value = _to_num(bez_nds)
+    ws.cell(row=row_idx, column=block_start + 5).value = _to_num(row_data.get("Сумма"))
+
+
 def fill_template(pdf_data_list, target_dir, script_dir):
     template_src = os.path.join(script_dir, "конкурент.xlsx")
-    template_dst = os.path.join(target_dir, "конкурент.xlsx")
 
-    if os.path.exists(template_dst):
-        os.remove(template_dst)
-    shutil.copy2(template_src, template_dst)
+    folder_basename = os.path.basename(target_dir)
+    parts = folder_basename.split()
+    first_two = " ".join(parts[:2]) if len(parts) >= 2 else (parts[0] if parts else "unknown")
+    output_name = f"конкурент {first_two}.xlsx"
+    output_path = os.path.join(target_dir, output_name)
 
-    wb = load_workbook(template_dst)
+    shutil.copy2(template_src, output_path)
+
+    wb = load_workbook(output_path)
     ws = wb.active
 
     first_meta_row = _find_first_meta_row(ws)
@@ -163,6 +204,8 @@ def fill_template(pdf_data_list, target_dir, script_dir):
     total_row = _find_total_row(ws)
 
     existing_blocks = _parse_supplier_blocks(ws)
+    ref_block_start = existing_blocks[0]["start"] if existing_blocks else None
+    original_block_count = len(existing_blocks)
 
     for df, orig_headers, bez_nds in pdf_data_list:
         if df.shape[0] == 0:
@@ -177,21 +220,19 @@ def fill_template(pdf_data_list, target_dir, script_dir):
         if already_exists:
             continue
 
-        block = _find_or_create_block(ws, existing_blocks, first_meta_row, total_row)
+        block = _find_or_create_block(ws, existing_blocks, first_meta_row,
+                                      total_row, ref_block_start)
         block["name"] = filename
 
-        ws.cell(row=1, column=block["start"]).value = filename
+        cell = ws.cell(row=1, column=block["start"])
+        cell.value = filename
 
         max_data_rows = data_end - 3 + 1 if data_end >= 3 else 1
         for i in range(min(len(df), max_data_rows)):
             row_idx = 3 + i
-            ws.cell(row=row_idx, column=block["start"]).value = df.iloc[i][(filename, "Товар")]
-            ws.cell(row=row_idx, column=block["start"] + 1).value = df.iloc[i][(filename, "Кол-во")]
-            ws.cell(row=row_idx, column=block["start"] + 2).value = df.iloc[i][(filename, "Ед. изм")]
-            ws.cell(row=row_idx, column=block["start"] + 3).value = df.iloc[i][(filename, "Цена за ед.")]
-            bv = bez_nds[i] if i < len(bez_nds) and bez_nds[i] else None
-            ws.cell(row=row_idx, column=block["start"] + 4).value = bv
-            ws.cell(row=row_idx, column=block["start"] + 5).value = df.iloc[i][(filename, "Сумма")]
+            row_data = {col: df.iloc[i][(filename, col)] for col in STANDARD_COLUMNS}
+            bv = bez_nds[i] if i < len(bez_nds) else None
+            _fill_data_row(ws, row_idx, block["start"], row_data, bv)
 
         if len(df) > max_data_rows:
             extra = len(df) - max_data_rows
@@ -199,41 +240,40 @@ def fill_template(pdf_data_list, target_dir, script_dir):
 
             for i in range(max_data_rows, len(df)):
                 row_idx = 3 + i
-                ws.cell(row=row_idx, column=block["start"]).value = df.iloc[i][(filename, "Товар")]
-                ws.cell(row=row_idx, column=block["start"] + 1).value = df.iloc[i][(filename, "Кол-во")]
-                ws.cell(row=row_idx, column=block["start"] + 2).value = df.iloc[i][(filename, "Ед. изм")]
-                ws.cell(row=row_idx, column=block["start"] + 3).value = df.iloc[i][(filename, "Цена за ед.")]
-                bv = bez_nds[i] if i < len(bez_nds) and bez_nds[i] else None
-                ws.cell(row=row_idx, column=block["start"] + 4).value = bv
-                ws.cell(row=row_idx, column=block["start"] + 5).value = df.iloc[i][(filename, "Сумма")]
+                row_data = {col: df.iloc[i][(filename, col)] for col in STANDARD_COLUMNS}
+                bv = bez_nds[i] if i < len(bez_nds) else None
+                _fill_data_row(ws, row_idx, block["start"], row_data, bv)
 
             first_meta_row += extra
             total_row += extra
             data_end += extra
 
-        if total_row:
-            ws.cell(row=total_row, column=block["start"]).value = "Сумма"
-            total_col_letter = get_column_letter(block["start"] + 5)
-            ws.cell(row=total_row + 1, column=block["start"] + 5).value = (
-                f"=SUM({total_col_letter}3:{total_col_letter}{data_end})"
-            )
+    for b in existing_blocks:
+        ws.merge_cells(start_row=total_row, start_column=b["start"],
+                       end_row=total_row, end_column=b["start"] + 3)
 
-    folder_basename = os.path.basename(target_dir)
-    parts = folder_basename.split()
-    if len(parts) >= 2:
-        first_two = " ".join(parts[:2])
-    elif parts:
-        first_two = parts[0]
-    else:
-        first_two = "unknown"
-    output_name = f"конкурент {first_two}.xlsx"
-    output_path = os.path.join(target_dir, output_name)
+        col_letter = get_column_letter(b["start"] + 4)
+        ws.column_dimensions[col_letter].hidden = True
+
+        ws.cell(row=total_row, column=b["start"] + 5).value = "Сумма"
+
+        total_col_letter = get_column_letter(b["start"] + 5)
+        ws.cell(row=total_row + 1, column=b["start"] + 5).value = (
+            f"=SUM({total_col_letter}3:{total_col_letter}{data_end})"
+        )
+
+    new_blocks = existing_blocks[original_block_count:] if ref_block_start else []
+    for b in new_blocks:
+        _copy_block_formatting(ws, b["start"], ref_block_start, total_row + 1)
+
+    for b in existing_blocks:
+        _auto_fit_block_columns(ws, b["start"], data_end)
+
+    for r in range(3, data_end + 1):
+        ws.row_dimensions[r].height = None
 
     wb.save(output_path)
     print(f"\nГотово! Конкурентная таблица сохранена как '{output_name}'")
-
-    if os.path.exists(template_dst):
-        os.remove(template_dst)
 
 
 def process_pdf_file(pdf_path, file_data_list):
@@ -256,22 +296,11 @@ def process_pdf_file(pdf_path, file_data_list):
         file_data_list.append((empty, orig, []))
 
 
-def get_output_path(folder_path, user_output):
-    if user_output:
-        return user_output
-    return os.path.join(folder_path, "merged_tables.xlsx")
-
-
 def main():
     parser = argparse.ArgumentParser(
-        description="Извлечение таблиц из всех PDF-файлов в папке и объединение в один Excel."
+        description="Извлечение таблиц из всех PDF-файлов в папке и заполнение конкурентной таблицы."
     )
     parser.add_argument("folder_path", help="Путь к папке с PDF-файлами")
-    parser.add_argument(
-        "-o",
-        "--output",
-        help="Путь к выходному Excel-файлу (по умолчанию: режим конкурентной таблицы)",
-    )
     args = parser.parse_args()
 
     if not os.path.isdir(args.folder_path):
@@ -293,17 +322,8 @@ def main():
         print("Не удалось извлечь ни одной таблицы.")
         return
 
-    if args.output:
-        output_path = get_output_path(args.folder_path, args.output)
-        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        write_merged_excel(output_path, file_data_list)
-        total_rows = max((df.shape[0] for df, _, _ in file_data_list), default=0)
-        print(f"\nГотово! Объединённый файл сохранён как '{output_path}'")
-        print(f"Всего файлов: {len(file_data_list)}")
-        print(f"Всего строк данных: {total_rows}")
-    else:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        fill_template(file_data_list, args.folder_path, script_dir)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    fill_template(file_data_list, args.folder_path, script_dir)
 
 
 if __name__ == "__main__":
