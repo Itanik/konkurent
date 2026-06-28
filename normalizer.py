@@ -9,7 +9,7 @@ COLUMN_PATTERNS = {
     "Сумма": ["всего", "итого", "стоимость с", "сумма"],
 }
 
-STANDARD_COLUMNS = ["№", "Товар", "Кол-во", "Ед. изм", "Сумма"]
+STANDARD_COLUMNS = ["№", "Товар", "Кол-во", "Ед. изм", "Цена за ед.", "Сумма"]
 
 SUMMARY_KEYWORDS = ["итого", "всего", "ндс", "к оплате", "в том числе"]
 
@@ -79,6 +79,8 @@ def map_columns(header_row):
         cell_lower = str(cell).lower().strip()
         best_match = None
         for std_name in STANDARD_COLUMNS:
+            if std_name not in COLUMN_PATTERNS:
+                continue
             for pat in COLUMN_PATTERNS[std_name]:
                 if pat in cell_lower:
                     best_match = std_name
@@ -109,7 +111,14 @@ def normalize_table(df, header_row_idx, col_mapping):
         if not row_vals[1].strip():
             continue
         row_vals[2] = _normalize_number(row_vals[2])
-        row_vals[4] = _normalize_number(row_vals[4])
+        row_vals[5] = _normalize_number(row_vals[5])
+        try:
+            qty = float(row_vals[2])
+            total = float(row_vals[5])
+            if qty > 0:
+                row_vals[4] = str(round(total / qty, 2))
+        except (ValueError, TypeError):
+            pass
         data_rows.append(row_vals)
 
     if not data_rows:

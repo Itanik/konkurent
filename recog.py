@@ -8,9 +8,7 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment
 
-from normalizer import process_pdf_tables
-
-STANDARD_COLUMNS = ["№", "Товар", "Кол-во", "Ед. изм", "Сумма"]
+from normalizer import process_pdf_tables, STANDARD_COLUMNS
 
 
 def extract_with_camelot(pdf_path):
@@ -37,6 +35,9 @@ def extract_with_camelot(pdf_path):
     return tables
 
 
+COLS_PER_FILE = len(STANDARD_COLUMNS)
+
+
 def write_merged_excel(output_path, file_data_list):
     wb = Workbook()
     ws = wb.active
@@ -53,7 +54,7 @@ def write_merged_excel(output_path, file_data_list):
         if max_data_rows > 0:
             ws.merge_cells(
                 start_row=1, start_column=col,
-                end_row=1, end_column=col + 4
+                end_row=1, end_column=col + COLS_PER_FILE - 1
             )
 
         for i, std_name in enumerate(STANDARD_COLUMNS):
@@ -68,7 +69,7 @@ def write_merged_excel(output_path, file_data_list):
                     continue
                 ws.cell(row=row_idx + 3, column=col + i, value=val)
 
-        col += 5
+        col += COLS_PER_FILE
 
     ws.column_dimensions["A"].width = 14
     wb.save(output_path)
