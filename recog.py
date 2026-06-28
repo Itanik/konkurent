@@ -308,7 +308,7 @@ def main():
         print(f"Ошибка: Папка '{args.folder_path}' не найдена.")
         return
 
-    pdf_files = sorted(glob(os.path.join(args.folder_path, "*.pdf")))
+    pdf_files = sorted(glob(os.path.join(args.folder_path, "*.[pP][dD][fF]")))
     if not pdf_files:
         print(f"В папке '{args.folder_path}' не найдено PDF-файлов.")
         return

@@ -9,7 +9,7 @@ from glob import glob
 import customtkinter as ctk
 from tkinter import filedialog
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 
 from recog import process_pdf_file, fill_template
 
@@ -109,7 +109,7 @@ class App(ctk.CTk):
         if not folder or not os.path.isdir(folder):
             return
 
-        pdfs = sorted(glob(os.path.join(folder, "*.pdf")))
+        pdfs = sorted(glob(os.path.join(folder, "*.[pP][dD][fF]")))
         if not pdfs:
             self._log("PDF не найдены")
             return
