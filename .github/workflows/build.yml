@@ -1,0 +1,58 @@
+name: Build portable
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk ghostscript
+
+      - name: Setup venv & install deps
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -r requirements.txt pyinstaller
+
+      - name: Build
+        run: ./build_portable.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: konkurent-linux
+          path: dist/конкурент/
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Ghostscript
+        run: choco install ghostscript --no-progress
+
+      - name: Setup venv & install deps
+        run: |
+          python -m venv .venv
+          .venv\Scripts\pip install -r requirements.txt pyinstaller
+
+      - name: Build
+        run: .\build_portable.bat
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: konkurent-windows
+          path: dist\kongkurent\
