@@ -274,6 +274,7 @@ def fill_template(pdf_data_list, target_dir, script_dir):
 
     wb.save(output_path)
     print(f"\nГотово! Конкурентная таблица сохранена как '{output_name}'")
+    return output_path
 
 
 def process_pdf_file(pdf_path, file_data_list):
