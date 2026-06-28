@@ -9,6 +9,8 @@ COLUMN_PATTERNS = {
     "Сумма": ["всего", "итого", "стоимость с", "сумма"],
 }
 
+BEZ_NDS_PATTERNS = ["без ндс"]
+
 STANDARD_COLUMNS = ["№", "Товар", "Кол-во", "Ед. изм", "Цена за ед.", "Сумма"]
 
 SUMMARY_KEYWORDS = ["итого", "всего", "ндс", "к оплате", "в том числе"]
@@ -100,8 +102,20 @@ def map_columns(header_row):
     return mapping
 
 
-def normalize_table(df, header_row_idx, col_mapping):
+def find_bez_nds_column(header_row, mapped_indices):
+    for col_idx, cell in enumerate(header_row):
+        if col_idx in mapped_indices:
+            continue
+        cell_lower = str(cell).lower().strip()
+        for pat in BEZ_NDS_PATTERNS:
+            if pat in cell_lower:
+                return col_idx
+    return None
+
+
+def normalize_table(df, header_row_idx, col_mapping, bez_nds_col_idx):
     data_rows = []
+    bez_nds_values = []
     for row_idx in range(header_row_idx + 1, len(df)):
         row = df.iloc[row_idx]
         row_vals = [_clean_cell(row[col_mapping.get(col)]) if col in col_mapping else ""
@@ -119,10 +133,18 @@ def normalize_table(df, header_row_idx, col_mapping):
                 row_vals[4] = str(round(total / qty, 2))
         except (ValueError, TypeError):
             pass
+
+        if bez_nds_col_idx is not None:
+            bv = _clean_cell(row[bez_nds_col_idx])
+            bv = _normalize_number(bv)
+            bez_nds_values.append(bv)
+        else:
+            bez_nds_values.append("")
+
         data_rows.append(row_vals)
 
     if not data_rows:
-        return pd.DataFrame(columns=STANDARD_COLUMNS)
+        return pd.DataFrame(columns=STANDARD_COLUMNS), []
 
     result = pd.DataFrame(data_rows, columns=STANDARD_COLUMNS)
 
@@ -131,7 +153,7 @@ def normalize_table(df, header_row_idx, col_mapping):
         result["№"] = range(1, len(result) + 1)
 
     result = result.reset_index(drop=True)
-    return result
+    return result, bez_nds_values
 
 
 def find_best_table(tables):
@@ -159,20 +181,29 @@ def get_original_headers(header_row, col_mapping):
 
 
 def process_pdf_tables(tables, filename):
+    if not tables:
+        empty = pd.DataFrame(columns=STANDARD_COLUMNS)
+        empty.columns = pd.MultiIndex.from_product([[filename], STANDARD_COLUMNS])
+        orig = {col: col for col in STANDARD_COLUMNS}
+        return empty, orig, []
+
     best_idx, score = find_best_table(tables)
     if best_idx == -1 or score < 3:
         empty = pd.DataFrame(columns=STANDARD_COLUMNS)
         empty.columns = pd.MultiIndex.from_product([[filename], STANDARD_COLUMNS])
         orig = {col: col for col in STANDARD_COLUMNS}
-        return empty, orig
+        return empty, orig, []
 
     df = tables[best_idx].df
     header_row_idx, _ = find_header_row(df)
     header_row = df.iloc[header_row_idx]
     col_mapping = map_columns(header_row)
 
-    normalized = normalize_table(df, header_row_idx, col_mapping)
+    mapped_indices = set(col_mapping.values())
+    bez_nds_col_idx = find_bez_nds_column(header_row, mapped_indices)
+
+    normalized, bez_nds = normalize_table(df, header_row_idx, col_mapping, bez_nds_col_idx)
     orig = get_original_headers(header_row, col_mapping)
 
     normalized.columns = pd.MultiIndex.from_product([[filename], STANDARD_COLUMNS])
-    return normalized, orig
+    return normalized, orig, bez_nds
