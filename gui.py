@@ -22,10 +22,9 @@ class QueueHandler:
         stripped = text.strip()
         if stripped:
             self.queue.put(stripped)
-        sys.__stdout__.write(text)
 
     def flush(self):
-        sys.__stdout__.flush()
+        pass
 
 
 class App(ctk.CTk):
@@ -148,6 +147,7 @@ class App(ctk.CTk):
         thread.start()
 
     def _run_processing(self, selected):
+        old_stdout = sys.stdout
         sys.stdout = QueueHandler(self.log_queue)
 
         file_data_list = []
@@ -164,7 +164,7 @@ class App(ctk.CTk):
         except Exception as e:
             self.log_queue.put(f"__DONE__Ошибка: {e}")
         finally:
-            sys.stdout = sys.__stdout__
+            sys.stdout = old_stdout
 
     def _poll_log(self):
         try:

@@ -18,7 +18,7 @@ fi
 
 echo "=== Сборка portable ==="
 .venv/bin/pyinstaller --onedir \
-    --add-data "конкурент.xlsx:." \
+    --add-data "template.xlsx:." \
     $MYPYC_BINARY \
     --name конкурент \
     gui.py 2>&1

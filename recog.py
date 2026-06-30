@@ -186,7 +186,7 @@ def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
 
 
 def fill_template(pdf_data_list, target_dir, script_dir):
-    template_src = os.path.join(script_dir, "конкурент.xlsx")
+    template_src = os.path.join(script_dir, "template.xlsx")
 
     folder_basename = os.path.basename(target_dir)
     parts = folder_basename.split()

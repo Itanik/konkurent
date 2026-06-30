@@ -18,7 +18,7 @@ if defined MYPYC_PYD (
 
 echo === Building portable ===
 .venv\Scripts\pyinstaller --onedir --windowed ^
-    --add-data "конкурент.xlsx;." ^
+    --add-data "template.xlsx;." ^
     %MYPYC_BINARY% ^
     --name kongkurent ^
     gui.py
