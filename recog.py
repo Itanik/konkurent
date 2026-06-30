@@ -185,14 +185,17 @@ def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
     ws.cell(row=row_idx, column=block_start + 5).value = _to_num(row_data.get("Сумма"))
 
 
-def fill_template(pdf_data_list, target_dir, script_dir):
+def fill_template(pdf_data_list, target_dir, script_dir, output_path=None):
     template_src = os.path.join(script_dir, "template.xlsx")
 
-    folder_basename = os.path.basename(target_dir)
-    parts = folder_basename.split()
-    first_two = " ".join(parts[:2]) if len(parts) >= 2 else (parts[0] if parts else "unknown")
-    output_name = f"конкурент {first_two}.xlsx"
-    output_path = os.path.join(target_dir, output_name)
+    if output_path is None:
+        folder_basename = os.path.basename(target_dir)
+        parts = folder_basename.split()
+        first_two = " ".join(parts[:2]) if len(parts) >= 2 else (parts[0] if parts else "unknown")
+        output_name = f"конкурент {first_two}.xlsx"
+        output_path = os.path.join(target_dir, output_name)
+    else:
+        output_name = os.path.basename(output_path)
 
     shutil.copy2(template_src, output_path)
 
