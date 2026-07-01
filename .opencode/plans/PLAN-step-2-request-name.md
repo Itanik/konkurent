@@ -61,7 +61,20 @@ self.request_name_entry.pack(side="left", fill="x", expand=True)
 
 ---
 
-### ▶ Подшаг 2.4 — Тестирование GUI (делаете ВЫ)
+### ▶ Подшаг 2.4 — Автоматический CLI-тест на example_data (делает opencode)
+
+```bash
+.venv\Scripts\python recog.py example_data
+if (Test-Path "example_data\\конкурент example_data.xlsx") { Write-Host "OK: файл создан" } else { throw "Файл не создан" }
+```
+
+**Что делает opencode:** прогоняет CLI на example_data.
+
+⏸ **Контроль:** opencode показывает результат, ждёт вашей команды.
+
+---
+
+### ▶ Подшаг 2.5 — Тестирование GUI (делаете ВЫ)
 
 ```bash
 python gui.py
@@ -69,14 +82,15 @@ python gui.py
 
 1. Поле «Имя заявки» отображается над вкладками
 2. Значение по умолчанию — «Заявка»
-3. Запустить обработку → в A1 результат: `"Заявка: {введённое}"`
+3. Выбрать `example_data` в вкладке «Выбор папки», запустить обработку
+4. В A1 результат: `"Заявка: {введённое}"`
 
 ✅ **Если ок:** «Продолжай».
 ❌ **Если ошибка:** «Отмена, шаг 2 сломан».
 
 ---
 
-### ▶ Подшаг 2.5 — Портативная сборка (делает opencode)
+### ▶ Подшаг 2.6 — Портативная сборка (делает opencode)
 
 ```bash
 Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
@@ -87,7 +101,7 @@ cmd /c build_portable.bat
 
 ---
 
-### ▶ Подшаг 2.6 — Коммит и мёрж (делает opencode, утверждаете ВЫ)
+### ▶ Подшаг 2.7 — Коммит и мёрж (делает opencode, утверждаете ВЫ)
 
 ```bash
 git checkout -b feat/request-name

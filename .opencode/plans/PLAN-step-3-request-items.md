@@ -92,14 +92,27 @@ if request_items:
 
 ---
 
-### ▶ Подшаг 3.5 — Тестирование GUI (делаете ВЫ)
+### ▶ Подшаг 3.5 — Автоматический CLI-тест на example_data (делает opencode)
+
+```bash
+.venv\Scripts\python recog.py example_data
+if (Test-Path "example_data\\конкурент example_data.xlsx") { Write-Host "OK: файл создан" } else { throw "Файл не создан" }
+```
+
+**Что делает opencode:** прогоняет CLI на example_data (без request_items — старый путь, A–C из PDF).
+
+⏸ **Контроль:** opencode показывает результат, ждёт вашей команды.
+
+---
+
+### ▶ Подшаг 3.6 — Тестирование GUI (делаете ВЫ)
 
 ```bash
 python gui.py
 ```
 
 1. Вкладка «Позиции заявки» отображается и работает
-2. Добавить 2-3 позиции → запустить обработку → A–C = введённые, блоки = PDF
+2. Добавить 2-3 позиции → выбрать `example_data` → запустить → A–C = введённые, блоки = PDF
 3. Очистить вкладку → запустить → поведение как раньше (A–C из PDF)
 
 ✅ **Если ок:** «Продолжай».
@@ -107,7 +120,7 @@ python gui.py
 
 ---
 
-### ▶ Подшаг 3.6 — Портативная сборка (делает opencode)
+### ▶ Подшаг 3.7 — Портативная сборка (делает opencode)
 
 ```bash
 Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
@@ -118,7 +131,7 @@ cmd /c build_portable.bat
 
 ---
 
-### ▶ Подшаг 3.7 — Коммит и мёрж (делает opencode, утверждаете ВЫ)
+### ▶ Подшаг 3.8 — Коммит и мёрж (делает opencode, утверждаете ВЫ)
 
 ```bash
 git checkout -b feat/request-items

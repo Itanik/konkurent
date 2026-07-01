@@ -86,20 +86,39 @@
 
 ---
 
-### ▶ Подшаг 1.5 — Тестирование CLI (делаете ВЫ)
+### ▶ Подшаг 1.5 — Автоматический CLI-тест на example_data (делает opencode)
 
 ```bash
-# Временно убрать template.xlsx
-Move-Item template.xlsx template.xlsx.bak
+# Временно убрать template.xlsx, чтобы убедиться — он не нужен
+Move-Item template.xlsx template.xlsx.bak -ErrorAction SilentlyContinue
 
-# Запустить CLI на папке с PDF
-python recog.py <папка_с_pdf>
+# Запустить CLI на example_data
+.venv\Scripts\python recog.py example_data
+
+# Проверить, что .xlsx создался
+if (Test-Path "example_data\\конкурент example_data.xlsx") { Write-Host "OK: файл создан" } else { throw "Файл не создан" }
+
+# Вернуть template.xlsx
+Move-Item template.xlsx.bak template.xlsx -ErrorAction SilentlyContinue
 ```
 
-**Что делаете вы:** запускаете CLI, открываете .xlsx, проверяете структуру.
+**Что делает opencode:** прогоняет CLI на example_data, проверяет создание .xlsx.
+
+⏸ **Контроль:** opencode показывает результат. При ошибке вы говорите «Отмена».
+
+---
+
+### ▶ Подшаг 1.6 — Тестирование GUI (делаете ВЫ)
+
+```bash
+python gui.py
+```
+
+Скопировать путь `example_data` в поле «Папка с PDF» на вкладке «Выбор папки»,
+выбрать файлы, запустить обработку, проверить результат.
 
 ✅ **Если ок:** командуете «Продолжай».
-❌ **Если ошибка:** командуете «Отмена, шаг 1 сломан» — opencode откатывает.
+❌ **Если ошибка:** «Отмена».
 
 ---
 
@@ -129,7 +148,7 @@ cmd /c build_portable.bat
 
 ---
 
-### ▶ Подшаг 1.8 — Коммит и мёрж (делает opencode, но утверждаете ВЫ)
+### ▶ Подшаг 1.8 — Коммит и мёрж (делает opencode, утверждаете ВЫ)
 
 ```bash
 git checkout -b feat/json-config

@@ -93,14 +93,27 @@ if _maybe_add_hidden_filename_row(ws, config, block_names):
 
 ---
 
-### ▶ Подшаг 4.4 — Тестирование GUI (делаете ВЫ)
+### ▶ Подшаг 4.4 — Автоматический CLI-тест на example_data (делает opencode)
+
+```bash
+.venv\Scripts\python recog.py example_data
+if (Test-Path "example_data\\конкурент example_data.xlsx") { Write-Host "OK: файл создан" } else { throw "Файл не создан" }
+```
+
+**Что делает opencode:** прогоняет CLI на example_data.
+
+⏸ **Контроль:** opencode показывает результат, ждёт вашей команды.
+
+---
+
+### ▶ Подшаг 4.5 — Тестирование GUI (делаете ВЫ)
 
 ```bash
 python gui.py
 ```
 
 **Тест 1 — без кастомных имён:**
-- Запустить обработку без ввода имён поставщиков
+- Выбрать `example_data` → запустить обработку без ввода имён поставщиков
 - Открыть .xlsx → row 2 — это заголовки колонок, скрытой строки нет
 
 **Тест 2 — с кастомными именами:**
@@ -114,7 +127,7 @@ python gui.py
 
 ---
 
-### ▶ Подшаг 4.5 — Портативная сборка (делает opencode)
+### ▶ Подшаг 4.6 — Портативная сборка (делает opencode)
 
 ```bash
 Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
@@ -125,7 +138,7 @@ cmd /c build_portable.bat
 
 ---
 
-### ▶ Подшаг 4.6 — Коммит и мёрж (делает opencode, утверждаете ВЫ)
+### ▶ Подшаг 4.7 — Коммит и мёрж (делает opencode, утверждаете ВЫ)
 
 ```bash
 git checkout -b feat/hidden-filename-row
