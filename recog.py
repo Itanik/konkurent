@@ -292,7 +292,7 @@ def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
 
 
 def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
-                  block_names=None, request_name=""):
+                  block_names=None, request_name="", request_items=None):
     config = load_config(os.path.join(script_dir, "config.json"))
 
     n_fixed = config["_fixed_len"]
@@ -321,6 +321,26 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
     data_end = meta_start - 1
     ref_block_start = existing_blocks[0]["start"] if existing_blocks else None
     original_block_count = len(existing_blocks)
+
+    if request_items:
+        for i, (name, qty) in enumerate(request_items):
+            row_idx = data_start + i
+            if row_idx > data_end:
+                ws.insert_rows(row_idx, 1)
+                data_end += 1
+                total_row += 1
+                for b in existing_blocks:
+                    for col_offset in range(block_size):
+                        _copy_style(
+                            ws.cell(row=data_start, column=b["start"] + col_offset),
+                            ws.cell(row=row_idx, column=b["start"] + col_offset),
+                        )
+                for col in range(1, n_fixed + 1):
+                    _copy_style(ws.cell(row=data_start, column=col),
+                                ws.cell(row=row_idx, column=col))
+            ws.cell(row=row_idx, column=1, value=i + 1)
+            ws.cell(row=row_idx, column=2, value=name)
+            ws.cell(row=row_idx, column=3, value=qty)
 
     for df, orig_headers, bez_nds in pdf_data_list:
         if df.shape[0] == 0:

@@ -49,6 +49,7 @@ class App(tkinterdnd2.Tk):
         self.output_dir_var = ctk.StringVar()
         self.output_name_var = ctk.StringVar(value="конкурент.xlsx")
 
+        self.request_item_rows = []
         self.output_path = None
         self.log_queue = queue.Queue()
 
@@ -88,6 +89,9 @@ class App(tkinterdnd2.Tk):
 
         tab_dnd = self.tabview.add("Drag && Drop")
         self._build_dnd_tab(tab_dnd)
+
+        tab_items = self.tabview.add("Позиции заявки")
+        self._build_request_items_tab(tab_items)
 
         frame_btn = ctk.CTkFrame(self)
         frame_btn.pack(fill="x", padx=10, pady=(0, 5))
@@ -176,6 +180,42 @@ class App(tkinterdnd2.Tk):
         self.pdf_vars_dnd.clear()
         self.name_vars_dnd.clear()
         self._update_run_button()
+
+    def _build_request_items_tab(self, parent):
+        btn_frame = ctk.CTkFrame(parent)
+        btn_frame.pack(fill="x", padx=5, pady=(10, 5))
+        ctk.CTkButton(btn_frame, text="+ Добавить строку", command=self._add_request_item_row).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Очистить", command=self._clear_request_items, fg_color="gray").pack(side="left", padx=5)
+
+        self.scroll_frame_items = ctk.CTkScrollableFrame(parent)
+        self.scroll_frame_items.pack(fill="both", expand=True, padx=5, pady=(2, 5))
+
+    def _add_request_item_row(self, name="", qty=""):
+        frame = ctk.CTkFrame(self.scroll_frame_items)
+        frame.pack(fill="x", padx=5, pady=1)
+
+        name_var = ctk.StringVar(value=name)
+        qty_var = ctk.StringVar(value=qty)
+
+        ctk.CTkLabel(frame, text="Название:", width=80).pack(side="left", padx=(5, 2))
+        ctk.CTkEntry(frame, textvariable=name_var).pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        ctk.CTkLabel(frame, text="Кол-во:", width=50).pack(side="left", padx=(0, 2))
+        ctk.CTkEntry(frame, textvariable=qty_var, width=80).pack(side="left", padx=(0, 5))
+
+        ctk.CTkButton(frame, text="×", width=30, fg_color="red",
+                       command=lambda f=frame: self._remove_request_item_row(f)).pack(side="left", padx=(0, 5))
+
+        self.request_item_rows.append({"frame": frame, "name_var": name_var, "qty_var": qty_var})
+
+    def _remove_request_item_row(self, frame):
+        frame.destroy()
+        self.request_item_rows[:] = [r for r in self.request_item_rows if r["frame"] != frame]
+
+    def _clear_request_items(self):
+        for r in self.request_item_rows:
+            r["frame"].destroy()
+        self.request_item_rows.clear()
 
     def _add_file_row_dnd(self, file_path):
         row_frame = ctk.CTkFrame(self.scroll_frame_dnd)
@@ -290,30 +330,39 @@ class App(tkinterdnd2.Tk):
         current_tab = self.tabview.get()
         if current_tab == "Выбор папки":
             state = "normal" if self.pdf_files_folder else "disabled"
+        elif current_tab == "Позиции заявки":
+            state = "normal" if self.request_item_rows else "disabled"
         else:
             state = "normal" if self.pdf_files_dnd else "disabled"
         self.btn_run.configure(state=state)
 
+    def _collect_selected(self, files, vars, name_vars):
+        selected = []
+        block_names = {}
+        for f, v, nv in zip(files, vars, name_vars):
+            if v.get():
+                selected.append(f)
+                custom = nv.get().strip()
+                if custom:
+                    block_names[os.path.basename(f)] = custom
+        return selected, block_names
+
     def _start_processing(self):
         current_tab = self.tabview.get()
+        selected = []
+        block_names = {}
         if current_tab == "Выбор папки":
-            selected = []
-            block_names = {}
-            for f, v, nv in zip(self.pdf_files_folder, self.pdf_vars_folder, self.name_vars_folder):
-                if v.get():
-                    selected.append(f)
-                    custom = nv.get().strip()
-                    if custom:
-                        block_names[os.path.basename(f)] = custom
+            selected, block_names = self._collect_selected(
+                self.pdf_files_folder, self.pdf_vars_folder, self.name_vars_folder)
+        elif current_tab == "Позиции заявки":
+            selected, block_names = self._collect_selected(
+                self.pdf_files_folder, self.pdf_vars_folder, self.name_vars_folder)
+            if not selected:
+                selected, block_names = self._collect_selected(
+                    self.pdf_files_dnd, self.pdf_vars_dnd, self.name_vars_dnd)
         else:
-            selected = []
-            block_names = {}
-            for f, v, nv in zip(self.pdf_files_dnd, self.pdf_vars_dnd, self.name_vars_dnd):
-                if v.get():
-                    selected.append(f)
-                    custom = nv.get().strip()
-                    if custom:
-                        block_names[os.path.basename(f)] = custom
+            selected, block_names = self._collect_selected(
+                self.pdf_files_dnd, self.pdf_vars_dnd, self.name_vars_dnd)
 
         if not selected:
             self._log("Нет выбранных файлов")
@@ -321,17 +370,24 @@ class App(tkinterdnd2.Tk):
 
         request_name = self.request_name_var.get().strip() or "Заявка"
 
+        request_items = None
+        if self.request_item_rows:
+            items = [(r["name_var"].get().strip(), r["qty_var"].get().strip())
+                     for r in self.request_item_rows if r["name_var"].get().strip()]
+            if items:
+                request_items = items
+
         self.btn_run.configure(state="disabled")
         self.btn_open.configure(state="disabled")
         self.output_path = None
         self.log_box.delete("0.0", "end")
 
         thread = threading.Thread(
-            target=self._run_processing, args=(selected, block_names, request_name), daemon=True
+            target=self._run_processing, args=(selected, block_names, request_name, request_items), daemon=True
         )
         thread.start()
 
-    def _run_processing(self, selected, block_names, request_name):
+    def _run_processing(self, selected, block_names, request_name, request_items):
         old_stdout = sys.stdout
         sys.stdout = QueueHandler(self.log_queue)
 
@@ -346,7 +402,8 @@ class App(tkinterdnd2.Tk):
                     folder = self.folder_path.get()
                     out = fill_template(file_data_list, folder, script_dir,
                                         block_names=block_names,
-                                        request_name=request_name)
+                                        request_name=request_name,
+                                        request_items=request_items)
                 else:
                     out_dir = self.output_dir_var.get()
                     out_name = self.output_name_var.get()
@@ -356,6 +413,7 @@ class App(tkinterdnd2.Tk):
                         output_path=os.path.join(out_dir, out_name),
                         block_names=block_names,
                         request_name=request_name,
+                        request_items=request_items,
                     )
                 self.log_queue.put(f"__DONE__{out}")
             else:
