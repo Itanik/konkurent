@@ -11,6 +11,7 @@ from copy import copy
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, Border, Side, Alignment
 
 from normalizer import process_pdf_tables, STANDARD_COLUMNS
 
@@ -63,6 +64,17 @@ def build_workbook(config, n_suppliers):
     block_size = config["_block_size"]
     defaults = config["defaults"]
 
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
+    font_size = defaults.get("font_size", 11)
+    font_name = defaults.get("font_name", "Calibri")
+    bold_font = Font(name=font_name, size=font_size, bold=True)
+    normal_font = Font(name=font_name, size=font_size)
+
     for i, col_cfg in enumerate(config["fixed_columns"]):
         cl = get_column_letter(i + 1)
         if col_cfg.get("width"):
@@ -77,48 +89,77 @@ def build_workbook(config, n_suppliers):
             if col_cfg.get("hidden"):
                 ws.column_dimensions[cl].hidden = True
 
+    center_align = Alignment(horizontal="center", vertical="center")
     ws.cell(row=1, column=1).value = "Заявка: "
+    ws.cell(row=1, column=1).font = bold_font
+    ws.cell(row=1, column=1).alignment = center_align
+    ws.cell(row=1, column=1).border = thin_border
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_fixed)
     for b_idx in range(n_suppliers):
         sc = n_fixed + b_idx * block_size + 1
         ec = sc + block_size - 1
         ws.merge_cells(start_row=1, start_column=sc, end_row=1, end_column=ec)
+        cell = ws.cell(row=1, column=sc)
+        cell.font = bold_font
+        cell.alignment = center_align
+        cell.border = thin_border
 
     for i, col_cfg in enumerate(config["fixed_columns"]):
-        ws.cell(row=2, column=i + 1).value = col_cfg["header"]
+        cell = ws.cell(row=2, column=i + 1)
+        cell.value = col_cfg["header"]
+        cell.font = bold_font
+        cell.border = thin_border
     for b_idx in range(n_suppliers):
         for col_offset, col_cfg in enumerate(config["block_columns"]):
             col = n_fixed + b_idx * block_size + col_offset + 1
-            ws.cell(row=2, column=col).value = col_cfg["header"]
+            cell = ws.cell(row=2, column=col)
+            cell.value = col_cfg["header"]
+            cell.font = bold_font
+            cell.border = thin_border
 
     row_cfg = config["row"]
     data_start = row_cfg["data_start"]
     n_data = row_cfg["data_rows"]
-    rh = defaults.get("row_height", 18.75)
     for r in range(data_start, data_start + n_data):
-        ws.row_dimensions[r].height = rh
+        for c in range(1, n_fixed + n_suppliers * block_size + 1):
+            cell = ws.cell(row=r, column=c)
+            cell.font = normal_font
+            cell.border = thin_border
 
     meta_labels = [m["label"] for m in row_cfg["meta"]]
     meta_start = data_start + n_data
     for i, label in enumerate(meta_labels):
         row = meta_start + i
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=n_fixed)
-        ws.cell(row=row, column=1).value = label
-        ws.row_dimensions[row].height = rh
+        cell = ws.cell(row=row, column=1)
+        cell.value = label
+        cell.font = normal_font
+        cell.border = thin_border
         for b_idx in range(n_suppliers):
             sc = n_fixed + b_idx * block_size + 1
             ec = sc + block_size - 1
             ws.merge_cells(start_row=row, start_column=sc, end_row=row, end_column=ec)
+            ws.cell(row=row, column=sc).border = thin_border
 
     total_row = meta_start + len(meta_labels)
     ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=n_fixed)
-    ws.row_dimensions[total_row].height = rh
+    ws.cell(row=total_row, column=1).border = thin_border
 
     for b_idx in range(n_suppliers):
         sc = n_fixed + b_idx * block_size + 1
         if block_size >= 4:
             ws.merge_cells(start_row=total_row, start_column=sc,
                            end_row=total_row, end_column=sc + 3)
-        ws.cell(row=total_row, column=sc + block_size - 1).value = "Сумма"
+        ws.cell(row=total_row, column=sc).border = thin_border
+        cell = ws.cell(row=total_row, column=sc + block_size - 1)
+        cell.value = "Сумма"
+        cell.font = bold_font
+        cell.border = thin_border
+
+    wrap_align = Alignment(wrap_text=True, vertical="center")
+    for r in range(2, total_row + 1):
+        for c in range(1, n_fixed + n_suppliers * block_size + 1):
+            ws.cell(row=r, column=c).alignment = wrap_align
 
     return wb, ws, data_start, n_data, meta_start, total_row
 
@@ -155,6 +196,8 @@ def _copy_block_formatting(ws, dst_start, src_start, max_row, block_size):
 
 def _auto_fit_block_columns(ws, block_start, end_row, block_size):
     for offset in range(1, block_size):
+        if offset >= 3:
+            continue
         col = block_start + offset
         cl = get_column_letter(col)
         rows_to_check = [2] + list(range(3, end_row + 1))
@@ -186,8 +229,22 @@ def _find_or_create_block(ws, existing_blocks, config):
 
     ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
 
+    bold_font = Font(name=config["defaults"].get("font_name", "Calibri"),
+                     size=config["defaults"].get("font_size", 11), bold=True)
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
     for i, col_cfg in enumerate(config["block_columns"]):
-        ws.cell(row=2, column=start + i).value = col_cfg["header"]
+        cell = ws.cell(row=2, column=start + i)
+        cell.value = col_cfg["header"]
+        cell.font = bold_font
+        cell.border = thin_border
+
+    wrap_align = Alignment(wrap_text=True, vertical="center")
+    first_col = start
+    for r in range(3, ws.max_row + 1):
+        ws.cell(row=r, column=first_col).alignment = wrap_align
 
     for col_offset, col_cfg in enumerate(config["block_columns"]):
         cl = get_column_letter(start + col_offset)
@@ -228,13 +285,18 @@ def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
     ws.cell(row=row_idx, column=block_start + 4).value = _to_num(bez_nds)
     ws.cell(row=row_idx, column=block_start + 5).value = _to_num(row_data.get("Сумма"))
 
+    for off in (3, 4, 5):
+        ws.cell(row=row_idx, column=block_start + off).number_format = "#,##0.00"
+
 
 def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
-                  block_names=None, request_name="Заявка"):
+                  block_names=None, request_name=""):
     config = load_config(os.path.join(script_dir, "config.json"))
 
     n_fixed = config["_fixed_len"]
     block_size = config["_block_size"]
+    bold_font = Font(name=config["defaults"].get("font_name", "Calibri"),
+                     size=config["defaults"].get("font_size", 11), bold=True)
 
     if output_path is None:
         folder_basename = os.path.basename(target_dir)
@@ -325,9 +387,10 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
         ws.cell(row=total_row, column=b["start"] + block_size - 1).value = "Сумма"
 
         total_col_letter = get_column_letter(b["start"] + block_size - 1)
-        ws.cell(row=total_row + 1, column=b["start"] + block_size - 1).value = (
-            f"=SUM({total_col_letter}{data_start}:{total_col_letter}{data_end})"
-        )
+        sum_cell = ws.cell(row=total_row + 1, column=b["start"] + block_size - 1)
+        sum_cell.value = f"=SUM({total_col_letter}{data_start}:{total_col_letter}{data_end})"
+        sum_cell.font = bold_font
+        sum_cell.number_format = "#,##0.00"
 
     ws.merge_cells(start_row=total_row, start_column=1,
                    end_row=total_row, end_column=n_fixed)
@@ -351,9 +414,6 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
 
     for b in existing_blocks:
         _auto_fit_block_columns(ws, b["start"], data_end, block_size)
-
-    for r in range(data_start, data_end + 1):
-        ws.row_dimensions[r].height = None
 
     wb.save(output_path)
     print(f"\nГотово! Конкурентная таблица сохранена как '{output_name}'")

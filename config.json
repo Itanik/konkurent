@@ -9,9 +9,9 @@
     { "header": "предложено",       "width": 31.7 },
     { "header": "кол-во",           "width": 6.3 },
     { "header": "ед.изм",           "width": 8.0 },
-    { "header": "ц/ед, с НДС",     "width": 15.3 },
-    { "header": "сумма, без НДС",  "width": 15.3, "hidden": true },
-    { "header": "сумма, с НДС",    "width": 16.0 }
+    { "header": "ц/ед, с НДС",     "width": 12 },
+    { "header": "сумма, без НДС",  "width": 12, "hidden": true },
+    { "header": "сумма, с НДС",    "width": 13 }
   ],
   "row": {
     "request_name": 1,
@@ -28,7 +28,6 @@
   },
   "defaults": {
     "font_name": "Calibri",
-    "font_size": 11,
-    "row_height": 18.75
+    "font_size": 14
   }
 }
