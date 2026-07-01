@@ -1,5 +1,12 @@
 name: Build & Release
 
+# Как создать релиз:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+# CI соберёт Linux + Windows билды и опубликует GitHub Release
+# с ZIP-архивами (konkurent-linux.zip, konkurent-windows.zip)
+# и автоматическими release notes из коммитов.
+
 on:
   push:
     branches: [main]
