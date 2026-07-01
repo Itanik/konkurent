@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import argparse
 import shutil
 import pandas as pd
@@ -8,7 +9,7 @@ from glob import glob
 
 from copy import copy
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
 from normalizer import process_pdf_tables, STANDARD_COLUMNS
@@ -38,44 +39,88 @@ def extract_with_camelot(pdf_path):
     return tables
 
 
-BLOCK_SIZE = 6
-META_KEYWORDS = ("Договор", "Сроки", "Доставк", "Условия", "Комментар")
+def load_config(path):
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+
+    block_size = len(cfg["block_columns"])
+    fixed_len = len(cfg["fixed_columns"])
+    cfg["_block_size"] = block_size
+    cfg["_fixed_len"] = fixed_len
+
+    for i, m in enumerate(cfg["row"].get("meta", [])):
+        m.setdefault("value_row", None)
+
+    return cfg
 
 
-def _find_first_meta_row(ws):
-    for row in range(3, ws.max_row + 1):
-        val_a = ws.cell(row=row, column=1).value
-        if val_a and str(val_a).strip().startswith(META_KEYWORDS):
-            return row
-    return ws.max_row + 1
+def build_workbook(config, n_suppliers):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = config["sheet_name"]
 
+    n_fixed = config["_fixed_len"]
+    block_size = config["_block_size"]
+    defaults = config["defaults"]
 
-def _find_total_row(ws):
-    for row in range(3, ws.max_row + 1):
-        val_a = ws.cell(row=row, column=1).value
-        if val_a and str(val_a).strip() == "Сумма":
-            return row
-    for row in range(3, ws.max_row + 1):
-        for c in (9, 15):
-            val = ws.cell(row=row, column=c).value
-            if val and str(val).strip() == "Сумма":
-                return row
-    return ws.max_row
+    for i, col_cfg in enumerate(config["fixed_columns"]):
+        cl = get_column_letter(i + 1)
+        if col_cfg.get("width"):
+            ws.column_dimensions[cl].width = col_cfg["width"]
 
+    for b_idx in range(n_suppliers):
+        for col_offset, col_cfg in enumerate(config["block_columns"]):
+            col = n_fixed + b_idx * block_size + col_offset + 1
+            cl = get_column_letter(col)
+            if col_cfg.get("width"):
+                ws.column_dimensions[cl].width = col_cfg["width"]
+            if col_cfg.get("hidden"):
+                ws.column_dimensions[cl].hidden = True
 
-def _parse_supplier_blocks(ws):
-    blocks = []
-    for mc in ws.merged_cells.ranges:
-        if mc.min_row != 1 or mc.max_row != 1:
-            continue
-        if mc.min_col == 1 and mc.max_col == 3:
-            continue
-        if mc.max_col - mc.min_col + 1 == BLOCK_SIZE:
-            cell = ws.cell(row=1, column=mc.min_col)
-            name = str(cell.value).strip() if cell.value else ""
-            blocks.append({"start": mc.min_col, "end": mc.max_col, "name": name})
-    blocks.sort(key=lambda b: b["start"])
-    return blocks
+    ws.cell(row=1, column=1).value = "Заявка: "
+    for b_idx in range(n_suppliers):
+        sc = n_fixed + b_idx * block_size + 1
+        ec = sc + block_size - 1
+        ws.merge_cells(start_row=1, start_column=sc, end_row=1, end_column=ec)
+
+    for i, col_cfg in enumerate(config["fixed_columns"]):
+        ws.cell(row=2, column=i + 1).value = col_cfg["header"]
+    for b_idx in range(n_suppliers):
+        for col_offset, col_cfg in enumerate(config["block_columns"]):
+            col = n_fixed + b_idx * block_size + col_offset + 1
+            ws.cell(row=2, column=col).value = col_cfg["header"]
+
+    row_cfg = config["row"]
+    data_start = row_cfg["data_start"]
+    n_data = row_cfg["data_rows"]
+    rh = defaults.get("row_height", 18.75)
+    for r in range(data_start, data_start + n_data):
+        ws.row_dimensions[r].height = rh
+
+    meta_labels = [m["label"] for m in row_cfg["meta"]]
+    meta_start = data_start + n_data
+    for i, label in enumerate(meta_labels):
+        row = meta_start + i
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=n_fixed)
+        ws.cell(row=row, column=1).value = label
+        ws.row_dimensions[row].height = rh
+        for b_idx in range(n_suppliers):
+            sc = n_fixed + b_idx * block_size + 1
+            ec = sc + block_size - 1
+            ws.merge_cells(start_row=row, start_column=sc, end_row=row, end_column=ec)
+
+    total_row = meta_start + len(meta_labels)
+    ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=n_fixed)
+    ws.row_dimensions[total_row].height = rh
+
+    for b_idx in range(n_suppliers):
+        sc = n_fixed + b_idx * block_size + 1
+        if block_size >= 4:
+            ws.merge_cells(start_row=total_row, start_column=sc,
+                           end_row=total_row, end_column=sc + 3)
+        ws.cell(row=total_row, column=sc + block_size - 1).value = "Сумма"
+
+    return wb, ws, data_start, n_data, meta_start, total_row
 
 
 def _copy_style(src, dst):
@@ -101,19 +146,19 @@ def _copy_style(src, dst):
         pass
 
 
-def _copy_block_formatting(ws, dst_start, src_start, max_row):
+def _copy_block_formatting(ws, dst_start, src_start, max_row, block_size):
     for row in range(1, max_row + 1):
-        for i in range(BLOCK_SIZE):
+        for i in range(block_size):
             _copy_style(ws.cell(row=row, column=src_start + i),
                         ws.cell(row=row, column=dst_start + i))
 
 
-def _auto_fit_block_columns(ws, block_start, end_row):
-    for offset in range(1, BLOCK_SIZE):
+def _auto_fit_block_columns(ws, block_start, end_row, block_size):
+    for offset in range(1, block_size):
         col = block_start + offset
         cl = get_column_letter(col)
         rows_to_check = [2] + list(range(3, end_row + 1))
-        if offset == 5:
+        if offset == block_size - 1:
             rows_to_check.append(end_row + 1)
         max_len = 0
         for r in rows_to_check:
@@ -123,30 +168,33 @@ def _auto_fit_block_columns(ws, block_start, end_row):
         ws.column_dimensions[cl].width = min(max_len + 2, 40)
 
 
-def _find_or_create_block(ws, existing_blocks, first_meta_row, total_row, ref_block_start):
+def _find_or_create_block(ws, existing_blocks, config):
     for b in existing_blocks:
         if not b["name"]:
             b["name"] = "PLACEHOLDER"
             return b
 
+    block_size = config["_block_size"]
+    n_fixed = config["_fixed_len"]
+
     if existing_blocks:
         last = max(b["end"] for b in existing_blocks)
         start = last + 1
     else:
-        start = 4
-    end = start + BLOCK_SIZE - 1
+        start = n_fixed + 1
+    end = start + block_size - 1
 
     ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
 
-    sub = ["предложено", "кол-во", "ед.изм", "ц/ед, с НДС", "сумма, без НДС", "сумма, с НДС"]
-    for i, h in enumerate(sub):
-        ws.cell(row=2, column=start + i).value = h
+    for i, col_cfg in enumerate(config["block_columns"]):
+        ws.cell(row=2, column=start + i).value = col_cfg["header"]
 
-    col_letter = get_column_letter(start + 4)
-    ws.column_dimensions[col_letter].hidden = True
-
-    prop_col = get_column_letter(start)
-    ws.column_dimensions[prop_col].width = 32
+    for col_offset, col_cfg in enumerate(config["block_columns"]):
+        cl = get_column_letter(start + col_offset)
+        if col_cfg.get("width"):
+            ws.column_dimensions[cl].width = col_cfg["width"]
+        if col_cfg.get("hidden"):
+            ws.column_dimensions[cl].hidden = True
 
     block = {"start": start, "end": end, "name": "PLACEHOLDER"}
     existing_blocks.append(block)
@@ -181,8 +229,12 @@ def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
     ws.cell(row=row_idx, column=block_start + 5).value = _to_num(row_data.get("Сумма"))
 
 
-def fill_template(pdf_data_list, target_dir, script_dir, output_path=None, block_names=None):
-    template_src = os.path.join(script_dir, "template.xlsx")
+def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
+                  block_names=None, request_name="Заявка"):
+    config = load_config(os.path.join(script_dir, "config.json"))
+
+    n_fixed = config["_fixed_len"]
+    block_size = config["_block_size"]
 
     if output_path is None:
         folder_basename = os.path.basename(target_dir)
@@ -193,16 +245,18 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None, block
     else:
         output_name = os.path.basename(output_path)
 
-    shutil.copy2(template_src, output_path)
+    wb, ws, data_start, n_data_rows, meta_start, total_row = \
+        build_workbook(config, len(pdf_data_list))
 
-    wb = load_workbook(output_path)
-    ws = wb.active
+    ws.cell(row=config["row"]["request_name"], column=1).value = f"Заявка: {request_name}"
 
-    first_meta_row = _find_first_meta_row(ws)
-    data_end = first_meta_row - 1
-    total_row = _find_total_row(ws)
+    existing_blocks = []
+    for b_idx in range(len(pdf_data_list)):
+        sc = n_fixed + b_idx * block_size + 1
+        ec = sc + block_size - 1
+        existing_blocks.append({"start": sc, "end": ec, "name": ""})
 
-    existing_blocks = _parse_supplier_blocks(ws)
+    data_end = meta_start - 1
     ref_block_start = existing_blocks[0]["start"] if existing_blocks else None
     original_block_count = len(existing_blocks)
 
@@ -219,17 +273,16 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None, block
         if already_exists:
             continue
 
-        block = _find_or_create_block(ws, existing_blocks, first_meta_row,
-                                      total_row, ref_block_start)
+        block = _find_or_create_block(ws, existing_blocks, config)
         effective_name = (block_names or {}).get(filename, filename)
         block["name"] = effective_name
 
         cell = ws.cell(row=1, column=block["start"])
         cell.value = effective_name
 
-        max_data_rows = data_end - 3 + 1 if data_end >= 3 else 1
+        max_data_rows = data_end - data_start + 1
         for i in range(min(len(df), max_data_rows)):
-            row_idx = 3 + i
+            row_idx = data_start + i
             row_data = {col: df.iloc[i][(filename, col)] for col in STANDARD_COLUMNS}
             bv = bez_nds[i] if i < len(bez_nds) else None
             _fill_data_row(ws, row_idx, block["start"], row_data, bv)
@@ -239,63 +292,67 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None, block
             ws.insert_rows(data_end + 1, extra)
 
             for i in range(max_data_rows, len(df)):
-                row_idx = 3 + i
+                row_idx = data_start + i
                 row_data = {col: df.iloc[i][(filename, col)] for col in STANDARD_COLUMNS}
                 bv = bez_nds[i] if i < len(bez_nds) else None
                 _fill_data_row(ws, row_idx, block["start"], row_data, bv)
 
-            first_meta_row += extra
+            first_meta_row_actual = meta_start
             total_row += extra
             data_end += extra
+            meta_start += extra
 
             for r in range(data_end - extra + 1, data_end + 1):
                 for b in existing_blocks:
-                    for col_offset in range(BLOCK_SIZE):
+                    for col_offset in range(block_size):
                         _copy_style(
-                            ws.cell(row=3, column=b["start"] + col_offset),
+                            ws.cell(row=data_start, column=b["start"] + col_offset),
                             ws.cell(row=r, column=b["start"] + col_offset),
                         )
-                for col in range(1, 4):
-                    _copy_style(ws.cell(row=3, column=col),
+                for col in range(1, n_fixed + 1):
+                    _copy_style(ws.cell(row=data_start, column=col),
                                 ws.cell(row=r, column=col))
 
     for b in existing_blocks:
         ws.merge_cells(start_row=total_row, start_column=b["start"],
                        end_row=total_row, end_column=b["start"] + 3)
 
-        col_letter = get_column_letter(b["start"] + 4)
-        ws.column_dimensions[col_letter].hidden = True
+        for col_offset, col_cfg in enumerate(config["block_columns"]):
+            if col_cfg.get("hidden"):
+                cl = get_column_letter(b["start"] + col_offset)
+                ws.column_dimensions[cl].hidden = True
 
-        ws.cell(row=total_row, column=b["start"] + 5).value = "Сумма"
+        ws.cell(row=total_row, column=b["start"] + block_size - 1).value = "Сумма"
 
-        total_col_letter = get_column_letter(b["start"] + 5)
-        ws.cell(row=total_row + 1, column=b["start"] + 5).value = (
-            f"=SUM({total_col_letter}3:{total_col_letter}{data_end})"
+        total_col_letter = get_column_letter(b["start"] + block_size - 1)
+        ws.cell(row=total_row + 1, column=b["start"] + block_size - 1).value = (
+            f"=SUM({total_col_letter}{data_start}:{total_col_letter}{data_end})"
         )
 
     ws.merge_cells(start_row=total_row, start_column=1,
-                   end_row=total_row, end_column=3)
+                   end_row=total_row, end_column=n_fixed)
 
     new_blocks = existing_blocks[original_block_count:] if ref_block_start else []
     for b in new_blocks:
-        _copy_block_formatting(ws, b["start"], ref_block_start, total_row + 1)
+        _copy_block_formatting(ws, b["start"], ref_block_start, total_row + 1, block_size)
 
     stale_ranges = list(ws.merged_cells.ranges)
     for mc in stale_ranges:
-        if 3 <= mc.min_row <= data_end:
+        if data_start <= mc.min_row <= data_end:
             ws.merged_cells.remove(mc)
 
-    meta_start, meta_end = first_meta_row, total_row - 1
-    for mr in range(meta_start, meta_end + 1):
-        ws.merge_cells(start_row=mr, start_column=1, end_row=mr, end_column=3)
+    meta_start_actual = meta_start
+    meta_end_actual = total_row - 1
+    for mr in range(meta_start_actual, meta_end_actual + 1):
+        ws.merge_cells(start_row=mr, start_column=1, end_row=mr, end_column=n_fixed)
         for b in existing_blocks:
             ws.merge_cells(start_row=mr, start_column=b["start"],
                            end_row=mr, end_column=b["end"])
 
     for b in existing_blocks:
-        _auto_fit_block_columns(ws, b["start"], data_end)
+        _auto_fit_block_columns(ws, b["start"], data_end, block_size)
 
-    for r in range(3, data_end + 1):
+    for r in range(data_start, data_end + 1):
         ws.row_dimensions[r].height = None
 
     wb.save(output_path)
