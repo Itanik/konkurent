@@ -1,7 +1,9 @@
-name: Build portable
+name: Build & Release
+
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
@@ -27,10 +29,15 @@ jobs:
       - name: Build
         run: ./build_portable.sh
 
+      - name: Pack
+        run: |
+          cd dist
+          zip -r ../konkurent-linux.zip конкурент/
+
       - uses: actions/upload-artifact@v4
         with:
-          name: konkurent-linux
-          path: dist/конкурент/
+          name: konkurent-linux-zip
+          path: konkurent-linux.zip
 
   windows:
     runs-on: windows-latest
@@ -52,7 +59,24 @@ jobs:
       - name: Build
         run: .\build_portable.bat
 
+      - name: Pack
+        run: |
+          cd dist
+          Compress-Archive -Path kongkurent -DestinationPath ..\konkurent-windows.zip
+
       - uses: actions/upload-artifact@v4
         with:
-          name: konkurent-windows
-          path: dist\kongkurent\
+          name: konkurent-windows-zip
+          path: konkurent-windows.zip
+
+  release:
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: konkurent-*.zip
+          generate_release_notes: true
