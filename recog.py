@@ -148,10 +148,6 @@ def _find_or_create_block(ws, existing_blocks, first_meta_row, total_row, ref_bl
     prop_col = get_column_letter(start)
     ws.column_dimensions[prop_col].width = 32
 
-    if first_meta_row and total_row:
-        for mr in range(first_meta_row, total_row):
-            ws.merge_cells(start_row=mr, start_column=start, end_row=mr, end_column=end)
-
     block = {"start": start, "end": end, "name": "PLACEHOLDER"}
     existing_blocks.append(block)
     existing_blocks.sort(key=lambda b: b["start"])
@@ -248,6 +244,17 @@ def fill_template(pdf_data_list, target_dir, script_dir):
             total_row += extra
             data_end += extra
 
+            for r in range(data_end - extra + 1, data_end + 1):
+                for b in existing_blocks:
+                    for col_offset in range(BLOCK_SIZE):
+                        _copy_style(
+                            ws.cell(row=3, column=b["start"] + col_offset),
+                            ws.cell(row=r, column=b["start"] + col_offset),
+                        )
+                for col in range(1, 4):
+                    _copy_style(ws.cell(row=3, column=col),
+                                ws.cell(row=r, column=col))
+
     for b in existing_blocks:
         ws.merge_cells(start_row=total_row, start_column=b["start"],
                        end_row=total_row, end_column=b["start"] + 3)
@@ -262,9 +269,24 @@ def fill_template(pdf_data_list, target_dir, script_dir):
             f"=SUM({total_col_letter}3:{total_col_letter}{data_end})"
         )
 
+    ws.merge_cells(start_row=total_row, start_column=1,
+                   end_row=total_row, end_column=3)
+
     new_blocks = existing_blocks[original_block_count:] if ref_block_start else []
     for b in new_blocks:
         _copy_block_formatting(ws, b["start"], ref_block_start, total_row + 1)
+
+    stale_ranges = list(ws.merged_cells.ranges)
+    for mc in stale_ranges:
+        if 3 <= mc.min_row <= data_end:
+            ws.merged_cells.remove(mc)
+
+    meta_start, meta_end = first_meta_row, total_row - 1
+    for mr in range(meta_start, meta_end + 1):
+        ws.merge_cells(start_row=mr, start_column=1, end_row=mr, end_column=3)
+        for b in existing_blocks:
+            ws.merge_cells(start_row=mr, start_column=b["start"],
+                           end_row=mr, end_column=b["end"])
 
     for b in existing_blocks:
         _auto_fit_block_columns(ws, b["start"], data_end)
