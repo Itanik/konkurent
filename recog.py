@@ -95,6 +95,7 @@ def build_workbook(config, n_suppliers, request_name=""):
     ws.cell(row=1, column=1).alignment = center_align
     ws.cell(row=1, column=1).border = thin_border
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_fixed)
+    ws.cell(row=1, column=n_fixed).border = thin_border
     for b_idx in range(n_suppliers):
         sc = n_fixed + b_idx * block_size + 1
         ec = sc + block_size - 1
@@ -103,6 +104,7 @@ def build_workbook(config, n_suppliers, request_name=""):
         cell.font = bold_font
         cell.alignment = center_align
         cell.border = thin_border
+        ws.cell(row=1, column=ec).border = thin_border
 
     for i, col_cfg in enumerate(config["fixed_columns"]):
         cell = ws.cell(row=2, column=i + 1)
