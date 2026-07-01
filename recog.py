@@ -291,6 +291,45 @@ def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
         ws.cell(row=row_idx, column=block_start + off).number_format = "#,##0.00"
 
 
+def _maybe_add_hidden_filename_row(ws, config, block_names, pdf_data_list):
+    if not block_names:
+        return False
+    ws.insert_rows(2)
+    n_fixed = config["_fixed_len"]
+    block_size = config["_block_size"]
+    defaults = config["defaults"]
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
+    normal_font = Font(
+        name=defaults.get("font_name", "Calibri"),
+        size=defaults.get("font_size", 11),
+    )
+
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_fixed)
+    cell = ws.cell(row=2, column=1)
+    cell.border = thin_border
+    ws.cell(row=2, column=n_fixed).border = thin_border
+
+    for b_idx, (df, _, _) in enumerate(pdf_data_list):
+        filename = df.columns.get_level_values(0)[0]
+        sc = n_fixed + b_idx * block_size + 1
+        ec = sc + block_size - 1
+        if block_size > 1:
+            ws.merge_cells(start_row=2, start_column=sc, end_row=2, end_column=ec)
+        cell = ws.cell(row=2, column=sc)
+        cell.value = filename
+        cell.font = normal_font
+        cell.border = thin_border
+        ws.cell(row=2, column=ec).border = thin_border
+
+    ws.row_dimensions[2].hidden = True
+    return True
+
+
 def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
                   block_names=None, request_name="", request_items=None):
     config = load_config(os.path.join(script_dir, "config.json"))
@@ -311,6 +350,11 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
 
     wb, ws, data_start, n_data_rows, meta_start, total_row = \
         build_workbook(config, len(pdf_data_list), request_name)
+
+    if _maybe_add_hidden_filename_row(ws, config, block_names, pdf_data_list):
+        data_start += 1
+        meta_start += 1
+        total_row += 1
 
     existing_blocks = []
     for b_idx in range(len(pdf_data_list)):
