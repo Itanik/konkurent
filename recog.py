@@ -55,7 +55,7 @@ def load_config(path):
     return cfg
 
 
-def build_workbook(config, n_suppliers):
+def build_workbook(config, n_suppliers, request_name=""):
     wb = Workbook()
     ws = wb.active
     ws.title = config["sheet_name"]
@@ -90,7 +90,7 @@ def build_workbook(config, n_suppliers):
                 ws.column_dimensions[cl].hidden = True
 
     center_align = Alignment(horizontal="center", vertical="center")
-    ws.cell(row=1, column=1).value = "Заявка: "
+    ws.cell(row=1, column=1).value = f"Заявка: {request_name}"
     ws.cell(row=1, column=1).font = bold_font
     ws.cell(row=1, column=1).alignment = center_align
     ws.cell(row=1, column=1).border = thin_border
@@ -308,9 +308,7 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
         output_name = os.path.basename(output_path)
 
     wb, ws, data_start, n_data_rows, meta_start, total_row = \
-        build_workbook(config, len(pdf_data_list))
-
-    ws.cell(row=config["row"]["request_name"], column=1).value = f"Заявка: {request_name}"
+        build_workbook(config, len(pdf_data_list), request_name)
 
     existing_blocks = []
     for b_idx in range(len(pdf_data_list)):

@@ -71,6 +71,15 @@ class App(tkinterdnd2.Tk):
         return paths
 
     def _build_ui(self):
+        top_frame = ctk.CTkFrame(self)
+        top_frame.pack(fill="x", padx=10, pady=(10, 0))
+        ctk.CTkLabel(top_frame, text="Имя заявки:").pack(side="left", padx=(0, 5))
+        self.request_name_var = ctk.StringVar(value="Заявка")
+        self.request_name_entry = ctk.CTkEntry(
+            top_frame, textvariable=self.request_name_var
+        )
+        self.request_name_entry.pack(side="left", fill="x", expand=True)
+
         self.tabview = ctk.CTkTabview(self, command=self._on_tab_switch)
         self.tabview.pack(fill="both", expand=True, padx=10, pady=(10, 5))
 
@@ -310,17 +319,19 @@ class App(tkinterdnd2.Tk):
             self._log("Нет выбранных файлов")
             return
 
+        request_name = self.request_name_var.get().strip() or "Заявка"
+
         self.btn_run.configure(state="disabled")
         self.btn_open.configure(state="disabled")
         self.output_path = None
         self.log_box.delete("0.0", "end")
 
         thread = threading.Thread(
-            target=self._run_processing, args=(selected, block_names), daemon=True
+            target=self._run_processing, args=(selected, block_names, request_name), daemon=True
         )
         thread.start()
 
-    def _run_processing(self, selected, block_names):
+    def _run_processing(self, selected, block_names, request_name):
         old_stdout = sys.stdout
         sys.stdout = QueueHandler(self.log_queue)
 
@@ -334,7 +345,8 @@ class App(tkinterdnd2.Tk):
                 if current_tab == "Выбор папки":
                     folder = self.folder_path.get()
                     out = fill_template(file_data_list, folder, script_dir,
-                                        block_names=block_names)
+                                        block_names=block_names,
+                                        request_name=request_name)
                 else:
                     out_dir = self.output_dir_var.get()
                     out_name = self.output_name_var.get()
@@ -343,6 +355,7 @@ class App(tkinterdnd2.Tk):
                         file_data_list, "", script_dir,
                         output_path=os.path.join(out_dir, out_name),
                         block_names=block_names,
+                        request_name=request_name,
                     )
                 self.log_queue.put(f"__DONE__{out}")
             else:
