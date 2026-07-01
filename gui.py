@@ -41,9 +41,11 @@ class App(tkinterdnd2.Tk):
         self.folder_path = ctk.StringVar()
         self.pdf_files_folder = []
         self.pdf_vars_folder = []
+        self.name_vars_folder = []
 
         self.pdf_files_dnd = []
         self.pdf_vars_dnd = []
+        self.name_vars_dnd = []
         self.output_dir_var = ctk.StringVar()
         self.output_name_var = ctk.StringVar(value="конкурент.xlsx")
 
@@ -163,7 +165,34 @@ class App(tkinterdnd2.Tk):
             w.destroy()
         self.pdf_files_dnd.clear()
         self.pdf_vars_dnd.clear()
+        self.name_vars_dnd.clear()
         self._update_run_button()
+
+    def _add_file_row_dnd(self, file_path):
+        row_frame = ctk.CTkFrame(self.scroll_frame_dnd)
+        row_frame.pack(fill="x", padx=5, pady=1)
+
+        var = ctk.IntVar(value=1)
+        cb = ctk.CTkCheckBox(
+            row_frame,
+            text=os.path.basename(file_path),
+            variable=var,
+            onvalue=1,
+            offvalue=0,
+        )
+        cb.pack(side="left", padx=(5, 5))
+
+        name_var = ctk.StringVar()
+        entry = ctk.CTkEntry(
+            row_frame,
+            textvariable=name_var,
+            placeholder_text=os.path.basename(file_path),
+        )
+        entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        self.pdf_files_dnd.append(file_path)
+        self.pdf_vars_dnd.append(var)
+        self.name_vars_dnd.append(name_var)
 
     def _on_drop(self, event):
         paths = self._parse_drop_data(event.data)
@@ -171,33 +200,13 @@ class App(tkinterdnd2.Tk):
         for path in paths:
             if os.path.isfile(path) and path.lower().endswith('.pdf'):
                 if path not in self.pdf_files_dnd:
-                    self.pdf_files_dnd.append(path)
-                    var = ctk.IntVar(value=1)
-                    cb = ctk.CTkCheckBox(
-                        self.scroll_frame_dnd,
-                        text=os.path.basename(path),
-                        variable=var,
-                        onvalue=1,
-                        offvalue=0,
-                    )
-                    cb.pack(anchor="w", padx=5, pady=1)
-                    self.pdf_vars_dnd.append(var)
+                    self._add_file_row_dnd(path)
                     added += 1
             elif os.path.isdir(path):
                 pdfs = sorted(glob(os.path.join(path, "**", "*.[pP][dD][fF]"), recursive=True))
                 for pdf in pdfs:
                     if pdf not in self.pdf_files_dnd:
-                        self.pdf_files_dnd.append(pdf)
-                        var = ctk.IntVar(value=1)
-                        cb = ctk.CTkCheckBox(
-                            self.scroll_frame_dnd,
-                            text=os.path.basename(pdf),
-                            variable=var,
-                            onvalue=1,
-                            offvalue=0,
-                        )
-                        cb.pack(anchor="w", padx=5, pady=1)
-                        self.pdf_vars_dnd.append(var)
+                        self._add_file_row_dnd(pdf)
                         added += 1
         if added:
             self._log(f"Добавлено PDF: {added}")
@@ -225,6 +234,7 @@ class App(tkinterdnd2.Tk):
             w.destroy()
         self.pdf_files_folder.clear()
         self.pdf_vars_folder.clear()
+        self.name_vars_folder.clear()
 
         folder = self.folder_path.get()
         if not folder or not os.path.isdir(folder):
@@ -241,16 +251,29 @@ class App(tkinterdnd2.Tk):
         self._log(f"Найдено PDF: {len(pdfs)}")
 
         for pdf in pdfs:
+            row_frame = ctk.CTkFrame(self.scroll_frame_folder)
+            row_frame.pack(fill="x", padx=5, pady=1)
+
             var = ctk.IntVar(value=1)
             cb = ctk.CTkCheckBox(
-                self.scroll_frame_folder,
+                row_frame,
                 text=os.path.basename(pdf),
                 variable=var,
                 onvalue=1,
                 offvalue=0,
             )
-            cb.pack(anchor="w", padx=5, pady=1)
+            cb.pack(side="left", padx=(5, 5))
+
+            name_var = ctk.StringVar()
+            entry = ctk.CTkEntry(
+                row_frame,
+                textvariable=name_var,
+                placeholder_text=os.path.basename(pdf),
+            )
+            entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
             self.pdf_vars_folder.append(var)
+            self.name_vars_folder.append(name_var)
 
         self._update_run_button()
 
@@ -265,9 +288,23 @@ class App(tkinterdnd2.Tk):
     def _start_processing(self):
         current_tab = self.tabview.get()
         if current_tab == "Выбор папки":
-            selected = [f for f, v in zip(self.pdf_files_folder, self.pdf_vars_folder) if v.get()]
+            selected = []
+            block_names = {}
+            for f, v, nv in zip(self.pdf_files_folder, self.pdf_vars_folder, self.name_vars_folder):
+                if v.get():
+                    selected.append(f)
+                    custom = nv.get().strip()
+                    if custom:
+                        block_names[os.path.basename(f)] = custom
         else:
-            selected = [f for f, v in zip(self.pdf_files_dnd, self.pdf_vars_dnd) if v.get()]
+            selected = []
+            block_names = {}
+            for f, v, nv in zip(self.pdf_files_dnd, self.pdf_vars_dnd, self.name_vars_dnd):
+                if v.get():
+                    selected.append(f)
+                    custom = nv.get().strip()
+                    if custom:
+                        block_names[os.path.basename(f)] = custom
 
         if not selected:
             self._log("Нет выбранных файлов")
@@ -279,11 +316,11 @@ class App(tkinterdnd2.Tk):
         self.log_box.delete("0.0", "end")
 
         thread = threading.Thread(
-            target=self._run_processing, args=(selected,), daemon=True
+            target=self._run_processing, args=(selected, block_names), daemon=True
         )
         thread.start()
 
-    def _run_processing(self, selected):
+    def _run_processing(self, selected, block_names):
         old_stdout = sys.stdout
         sys.stdout = QueueHandler(self.log_queue)
 
@@ -296,7 +333,8 @@ class App(tkinterdnd2.Tk):
                 current_tab = self.tabview.get()
                 if current_tab == "Выбор папки":
                     folder = self.folder_path.get()
-                    out = fill_template(file_data_list, folder, script_dir)
+                    out = fill_template(file_data_list, folder, script_dir,
+                                        block_names=block_names)
                 else:
                     out_dir = self.output_dir_var.get()
                     out_name = self.output_name_var.get()
@@ -304,6 +342,7 @@ class App(tkinterdnd2.Tk):
                     out = fill_template(
                         file_data_list, "", script_dir,
                         output_path=os.path.join(out_dir, out_name),
+                        block_names=block_names,
                     )
                 self.log_queue.put(f"__DONE__{out}")
             else:

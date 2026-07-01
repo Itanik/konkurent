@@ -181,7 +181,7 @@ def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
     ws.cell(row=row_idx, column=block_start + 5).value = _to_num(row_data.get("Сумма"))
 
 
-def fill_template(pdf_data_list, target_dir, script_dir, output_path=None):
+def fill_template(pdf_data_list, target_dir, script_dir, output_path=None, block_names=None):
     template_src = os.path.join(script_dir, "template.xlsx")
 
     if output_path is None:
@@ -221,10 +221,11 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None):
 
         block = _find_or_create_block(ws, existing_blocks, first_meta_row,
                                       total_row, ref_block_start)
-        block["name"] = filename
+        effective_name = (block_names or {}).get(filename, filename)
+        block["name"] = effective_name
 
         cell = ws.cell(row=1, column=block["start"])
-        cell.value = filename
+        cell.value = effective_name
 
         max_data_rows = data_end - 3 + 1 if data_end >= 3 else 1
         for i in range(min(len(df), max_data_rows)):
