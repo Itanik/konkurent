@@ -2,3 +2,4 @@ pandas
 camelot-py[cv]
 openpyxl
 customtkinter
+tkinterdnd2
