@@ -105,11 +105,22 @@ if (Test-Path "example_data\\конкурент example_data.xlsx") { Write-Host
 
 ---
 
-### ▶ Подшаг 3.6 — Тестирование GUI (делаете ВЫ)
+### ▶ Подшаг 3.6 — Портативная сборка (делает opencode)
 
 ```bash
-python gui.py
+Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
+cmd /c build_portable.bat
 ```
+
+**Что делает opencode:** собирает portable .exe.
+
+⏸ **Контроль:** opencode показывает результат, ждёт вашей команды.
+
+---
+
+### ▶ Подшаг 3.7 — Тестирование (делаете ВЫ)
+
+Запустите `dist\kongkurent\kongkurent.exe`.
 
 1. Вкладка «Позиции заявки» отображается и работает
 2. Добавить 2-3 позиции → выбрать `example_data` → запустить → A–C = введённые, блоки = PDF
@@ -117,17 +128,6 @@ python gui.py
 
 ✅ **Если ок:** «Продолжай».
 ❌ **Если ошибка:** «Отмена, шаг 3 сломан».
-
----
-
-### ▶ Подшаг 3.7 — Портативная сборка (делает opencode)
-
-```bash
-Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
-cmd /c build_portable.bat
-```
-
-⏸ **Контроль:** opencode ждёт вашей команды.
 
 ---
 

@@ -106,11 +106,22 @@ if (Test-Path "example_data\\конкурент example_data.xlsx") { Write-Host
 
 ---
 
-### ▶ Подшаг 4.5 — Тестирование GUI (делаете ВЫ)
+### ▶ Подшаг 4.5 — Портативная сборка (делает opencode)
 
 ```bash
-python gui.py
+Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
+cmd /c build_portable.bat
 ```
+
+**Что делает opencode:** собирает portable .exe.
+
+⏸ **Контроль:** opencode показывает результат, ждёт вашей команды.
+
+---
+
+### ▶ Подшаг 4.6 — Тестирование (делаете ВЫ)
+
+Запустите `dist\kongkurent\kongkurent.exe`.
 
 **Тест 1 — без кастомных имён:**
 - Выбрать `example_data` → запустить обработку без ввода имён поставщиков
@@ -124,17 +135,6 @@ python gui.py
 
 ✅ **Если ок:** «Продолжай».
 ❌ **Если ошибка:** «Отмена, шаг 4 сломан».
-
----
-
-### ▶ Подшаг 4.6 — Портативная сборка (делает opencode)
-
-```bash
-Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
-cmd /c build_portable.bat
-```
-
-⏸ **Контроль:** opencode ждёт вашей команды.
 
 ---
 

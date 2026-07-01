@@ -74,11 +74,22 @@ if (Test-Path "example_data\\конкурент example_data.xlsx") { Write-Host
 
 ---
 
-### ▶ Подшаг 2.5 — Тестирование GUI (делаете ВЫ)
+### ▶ Подшаг 2.5 — Портативная сборка (делает opencode)
 
 ```bash
-python gui.py
+Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
+cmd /c build_portable.bat
 ```
+
+**Что делает opencode:** собирает portable .exe.
+
+⏸ **Контроль:** opencode показывает результат, ждёт вашей команды.
+
+---
+
+### ▶ Подшаг 2.6 — Тестирование (делаете ВЫ)
+
+Запустите `dist\kongkurent\kongkurent.exe`.
 
 1. Поле «Имя заявки» отображается над вкладками
 2. Значение по умолчанию — «Заявка»
@@ -87,17 +98,6 @@ python gui.py
 
 ✅ **Если ок:** «Продолжай».
 ❌ **Если ошибка:** «Отмена, шаг 2 сломан».
-
----
-
-### ▶ Подшаг 2.6 — Портативная сборка (делает opencode)
-
-```bash
-Remove-Item -Recurse -Force "dist\kongkurent" -ErrorAction SilentlyContinue
-cmd /c build_portable.bat
-```
-
-⏸ **Контроль:** opencode ждёт вашей команды.
 
 ---
 
