@@ -34,6 +34,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         tkinterdnd2.TkinterDnD.require(self)
+        self.bind_all("<Button-1>", self._fix_ctkentry_focus, add=True)
 
         self.title("Конкурентная таблица")
         self.geometry("700x650")
@@ -56,6 +57,13 @@ class App(ctk.CTk):
 
         self._build_ui()
         self._check_gs()
+
+    @staticmethod
+    def _fix_ctkentry_focus(event):
+        widget = event.widget
+        parent = widget.master
+        if isinstance(parent, ctk.CTkEntry):
+            parent._entry.focus_set()
 
     @property
     def _app_dir(self):
