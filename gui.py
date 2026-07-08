@@ -30,9 +30,10 @@ class QueueHandler:
         pass
 
 
-class App(tkinterdnd2.Tk):
+class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+        tkinterdnd2.TkinterDnD.require(self)
 
         self.title("Конкурентная таблица")
         self.geometry("700x650")
