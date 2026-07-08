@@ -97,7 +97,8 @@ class App(tk.Tk):
         self._current_tab = "Выбор папки"
 
         self._build_ui()
-        self._setup_clipboard_bindings()
+        self.bind_class("Entry", "<Button-3>", self._show_context_menu)
+        self.bind_class("Text", "<Button-3>", self._show_context_menu)
         self._check_gs()
 
     @property
@@ -114,22 +115,6 @@ class App(tk.Tk):
                 p = p.replace('file:///', '', 1).replace('file://', '', 1)
                 paths.append(p)
         return paths
-
-    @staticmethod
-    def _clipboard_copy(event):
-        App._do_copy(event.widget)
-
-    @staticmethod
-    def _clipboard_paste(event):
-        App._do_paste(event.widget)
-
-    @staticmethod
-    def _clipboard_cut(event):
-        App._do_cut(event.widget)
-
-    @staticmethod
-    def _clipboard_select_all(event):
-        App._do_select_all(event.widget)
 
     @staticmethod
     def _do_copy(widget):
@@ -161,6 +146,24 @@ class App(tk.Tk):
         widget.selection_range(0, "end")
         widget.icursor("end")
 
+    def _add_clipboard_bindings(self, widget):
+        for seq, handler in (
+            ("<Control-c>", lambda e: self._do_copy(e.widget)),
+            ("<Control-C>", lambda e: self._do_copy(e.widget)),
+            ("<Control-v>", lambda e: self._do_paste(e.widget)),
+            ("<Control-V>", lambda e: self._do_paste(e.widget)),
+            ("<Control-x>", lambda e: self._do_cut(e.widget)),
+            ("<Control-X>", lambda e: self._do_cut(e.widget)),
+            ("<Control-a>", lambda e: self._do_select_all(e.widget)),
+            ("<Control-A>", lambda e: self._do_select_all(e.widget)),
+        ):
+            widget.bind(seq, handler)
+
+    def _create_entry(self, parent, **kwargs):
+        entry = self._create_entry(parent, **kwargs)
+        self._add_clipboard_bindings(entry)
+        return entry
+
     def _show_context_menu(self, event):
         widget = event.widget
         menu = tk.Menu(self, tearoff=0)
@@ -173,21 +176,6 @@ class App(tk.Tk):
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
-
-    def _setup_clipboard_bindings(self):
-        for cls in ("Entry", "Text"):
-            for seq, handler in (
-                ("<Control-c>", self._clipboard_copy),
-                ("<Control-C>", self._clipboard_copy),
-                ("<Control-v>", self._clipboard_paste),
-                ("<Control-V>", self._clipboard_paste),
-                ("<Control-x>", self._clipboard_cut),
-                ("<Control-X>", self._clipboard_cut),
-                ("<Control-a>", self._clipboard_select_all),
-                ("<Control-A>", self._clipboard_select_all),
-            ):
-                self.bind_class(cls, seq, handler)
-            self.bind_class(cls, "<Button-3>", self._show_context_menu)
 
     @staticmethod
     def _setup_placeholder(entry, placeholder):
@@ -210,7 +198,7 @@ class App(tk.Tk):
         top_frame.pack(fill="x", padx=10, pady=(10, 0))
         ttk.Label(top_frame, text="Имя заявки:").pack(side="left", padx=(0, 5))
         self.request_name_var = tk.StringVar(value="Заявка")
-        self.request_name_entry = tk.Entry(top_frame, textvariable=self.request_name_var)
+        self.request_name_entry = self._create_entry(top_frame, textvariable=self.request_name_var)
         self.request_name_entry.pack(side="left", fill="x", expand=True)
 
         self.tabview = ttk.Notebook(self)
@@ -249,6 +237,7 @@ class App(tk.Tk):
         log_frame = ttk.Frame(self)
         log_frame.pack(fill="x", padx=10, pady=(2, 10))
         self.log_box = tk.Text(log_frame, height=6)
+        self._add_clipboard_bindings(self.log_box)
         log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_box.yview)
         self.log_box.configure(yscrollcommand=log_scroll.set)
         self.log_box.pack(side="left", fill="both", expand=True)
@@ -261,7 +250,7 @@ class App(tk.Tk):
         frame_top.pack(fill="x", padx=5, pady=(5, 5))
 
         ttk.Label(frame_top, text="Папка с PDF:").pack(side="left", padx=(5, 5))
-        entry = tk.Entry(frame_top, textvariable=self.folder_path)
+        entry = self._create_entry(frame_top, textvariable=self.folder_path)
         entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
         entry.bind("<KeyRelease>", lambda e: self._scan_folder())
         ttk.Button(
@@ -293,12 +282,12 @@ class App(tk.Tk):
         frame_settings.pack(fill="x", padx=5, pady=(5, 5))
 
         ttk.Label(frame_settings, text="Имя файла:").grid(row=0, column=0, padx=(5, 5), pady=5, sticky="w")
-        tk.Entry(frame_settings, textvariable=self.output_name_var).grid(row=0, column=1, padx=(0, 5), pady=5, sticky="ew")
+        self._create_entry(frame_settings, textvariable=self.output_name_var).grid(row=0, column=1, padx=(0, 5), pady=5, sticky="ew")
 
         ttk.Label(frame_settings, text="Сохранить в:").grid(row=1, column=0, padx=(5, 5), pady=5, sticky="w")
         default_out = os.path.join(self._app_dir, "output")
         self.output_dir_var.set(default_out)
-        entry_dir = tk.Entry(frame_settings, textvariable=self.output_dir_var)
+        entry_dir = self._create_entry(frame_settings, textvariable=self.output_dir_var)
         entry_dir.grid(row=1, column=1, padx=(0, 5), pady=5, sticky="ew")
         ttk.Button(frame_settings, text="Обзор...", command=self._select_output_dir, width=10).grid(
             row=1, column=2, padx=(0, 5), pady=5
@@ -341,10 +330,10 @@ class App(tk.Tk):
         qty_var = tk.StringVar(value=qty)
 
         ttk.Label(frame, text="Название:", width=10).pack(side="left", padx=(5, 2))
-        tk.Entry(frame, textvariable=name_var).pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self._create_entry(frame, textvariable=name_var).pack(side="left", fill="x", expand=True, padx=(0, 5))
 
         ttk.Label(frame, text="Кол-во:", width=7).pack(side="left", padx=(0, 2))
-        tk.Entry(frame, textvariable=qty_var, width=10).pack(side="left", padx=(0, 5))
+        self._create_entry(frame, textvariable=qty_var, width=10).pack(side="left", padx=(0, 5))
 
         tk.Button(frame, text="×", width=3, bg="red", fg="white", relief="flat",
                    command=lambda f=frame: self._remove_request_item_row(f)).pack(side="left", padx=(0, 5))
@@ -373,7 +362,7 @@ class App(tk.Tk):
         cb.pack(side="left", padx=(5, 5))
 
         name_var = tk.StringVar()
-        entry = tk.Entry(row_frame, textvariable=name_var)
+        entry = self._create_entry(row_frame, textvariable=name_var)
         entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self._setup_placeholder(entry, os.path.basename(file_path))
 
@@ -451,7 +440,7 @@ class App(tk.Tk):
             cb.pack(side="left", padx=(5, 5))
 
             name_var = tk.StringVar()
-            entry = tk.Entry(row_frame, textvariable=name_var)
+            entry = self._create_entry(row_frame, textvariable=name_var)
             entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
             self._setup_placeholder(entry, os.path.basename(pdf))
 
