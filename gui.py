@@ -160,7 +160,7 @@ class App(tk.Tk):
             widget.bind(seq, handler)
 
     def _create_entry(self, parent, **kwargs):
-        entry = self._create_entry(parent, **kwargs)
+        entry = tk.Entry(parent, **kwargs)
         self._add_clipboard_bindings(entry)
         return entry
 
