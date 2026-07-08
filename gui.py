@@ -97,6 +97,7 @@ class App(tk.Tk):
         self._current_tab = "Выбор папки"
 
         self._build_ui()
+        self._setup_clipboard_bindings()
         self._check_gs()
 
     @property
@@ -113,6 +114,80 @@ class App(tk.Tk):
                 p = p.replace('file:///', '', 1).replace('file://', '', 1)
                 paths.append(p)
         return paths
+
+    @staticmethod
+    def _clipboard_copy(event):
+        App._do_copy(event.widget)
+
+    @staticmethod
+    def _clipboard_paste(event):
+        App._do_paste(event.widget)
+
+    @staticmethod
+    def _clipboard_cut(event):
+        App._do_cut(event.widget)
+
+    @staticmethod
+    def _clipboard_select_all(event):
+        App._do_select_all(event.widget)
+
+    @staticmethod
+    def _do_copy(widget):
+        try:
+            selected = widget.selection_get()
+            widget.clipboard_clear()
+            widget.clipboard_append(selected)
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _do_paste(widget):
+        try:
+            text = widget.clipboard_get()
+            widget.insert("insert", text)
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _do_cut(widget):
+        App._do_copy(widget)
+        try:
+            widget.delete("sel.first", "sel.last")
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _do_select_all(widget):
+        widget.selection_range(0, "end")
+        widget.icursor("end")
+
+    def _show_context_menu(self, event):
+        widget = event.widget
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="Копировать", command=lambda w=widget: self._do_copy(w))
+        menu.add_command(label="Вставить", command=lambda w=widget: self._do_paste(w))
+        menu.add_command(label="Вырезать", command=lambda w=widget: self._do_cut(w))
+        menu.add_separator()
+        menu.add_command(label="Выделить всё", command=lambda w=widget: self._do_select_all(w))
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _setup_clipboard_bindings(self):
+        for cls in ("Entry", "Text"):
+            for seq, handler in (
+                ("<Control-c>", self._clipboard_copy),
+                ("<Control-C>", self._clipboard_copy),
+                ("<Control-v>", self._clipboard_paste),
+                ("<Control-V>", self._clipboard_paste),
+                ("<Control-x>", self._clipboard_cut),
+                ("<Control-X>", self._clipboard_cut),
+                ("<Control-a>", self._clipboard_select_all),
+                ("<Control-A>", self._clipboard_select_all),
+            ):
+                self.bind_class(cls, seq, handler)
+            self.bind_class(cls, "<Button-3>", self._show_context_menu)
 
     @staticmethod
     def _setup_placeholder(entry, placeholder):
