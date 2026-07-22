@@ -405,6 +405,7 @@ class App(tk.Tk):
         folder = filedialog.askdirectory()
         if folder:
             self.folder_path.set(folder)
+            self.request_name_var.set(os.path.basename(folder))
             self._scan_folder()
 
     def _scan_folder(self):

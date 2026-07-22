@@ -90,21 +90,21 @@ def build_workbook(config, n_suppliers, request_name=""):
                 ws.column_dimensions[cl].hidden = True
 
     center_align = Alignment(horizontal="center", vertical="center")
+    for c in range(1, n_fixed + 1):
+        ws.cell(row=1, column=c).border = thin_border
     ws.cell(row=1, column=1).value = f"Заявка: {request_name}"
     ws.cell(row=1, column=1).font = bold_font
     ws.cell(row=1, column=1).alignment = center_align
-    ws.cell(row=1, column=1).border = thin_border
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_fixed)
-    ws.cell(row=1, column=n_fixed).border = thin_border
     for b_idx in range(n_suppliers):
         sc = n_fixed + b_idx * block_size + 1
         ec = sc + block_size - 1
+        for c in range(sc, ec + 1):
+            ws.cell(row=1, column=c).border = thin_border
         ws.merge_cells(start_row=1, start_column=sc, end_row=1, end_column=ec)
         cell = ws.cell(row=1, column=sc)
         cell.font = bold_font
         cell.alignment = center_align
-        cell.border = thin_border
-        ws.cell(row=1, column=ec).border = thin_border
 
     for i, col_cfg in enumerate(config["fixed_columns"]):
         cell = ws.cell(row=2, column=i + 1)
@@ -132,36 +132,58 @@ def build_workbook(config, n_suppliers, request_name=""):
     meta_start = data_start + n_data
     for i, label in enumerate(meta_labels):
         row = meta_start + i
+        for c in range(1, n_fixed + 1):
+            ws.cell(row=row, column=c).border = thin_border
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=n_fixed)
         cell = ws.cell(row=row, column=1)
         cell.value = label
         cell.font = normal_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = thin_border
         for b_idx in range(n_suppliers):
             sc = n_fixed + b_idx * block_size + 1
             ec = sc + block_size - 1
+            for c in range(sc, ec + 1):
+                cell = ws.cell(row=row, column=c)
+                cell.font = normal_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = thin_border
             ws.merge_cells(start_row=row, start_column=sc, end_row=row, end_column=ec)
-            ws.cell(row=row, column=sc).border = thin_border
 
     total_row = meta_start + len(meta_labels)
+    for c in range(1, n_fixed + 1):
+        ws.cell(row=total_row, column=c).border = thin_border
     ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=n_fixed)
-    ws.cell(row=total_row, column=1).border = thin_border
 
     for b_idx in range(n_suppliers):
         sc = n_fixed + b_idx * block_size + 1
+        ec = sc + block_size - 1
+        for c in range(sc, ec + 1):
+            ws.cell(row=total_row, column=c).border = thin_border
         if block_size >= 4:
             ws.merge_cells(start_row=total_row, start_column=sc,
                            end_row=total_row, end_column=sc + 3)
-        ws.cell(row=total_row, column=sc).border = thin_border
-        cell = ws.cell(row=total_row, column=sc + block_size - 1)
+        cell = ws.cell(row=total_row, column=ec)
         cell.value = "Сумма"
         cell.font = bold_font
-        cell.border = thin_border
 
     wrap_align = Alignment(wrap_text=True, vertical="center")
     for r in range(2, total_row + 1):
         for c in range(1, n_fixed + n_suppliers * block_size + 1):
             ws.cell(row=r, column=c).alignment = wrap_align
+
+    meta_font = Font(name=font_name, size=14)
+    meta_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for mr in range(meta_start, total_row):
+        for mc in range(1, n_fixed + n_suppliers * block_size + 1):
+            cell = ws.cell(row=mr, column=mc)
+            cell.font = meta_font
+            cell.alignment = meta_center
+
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    ws.page_setup.fitToPage = True
 
     return wb, ws, data_start, n_data, meta_start, total_row
 
@@ -309,22 +331,21 @@ def _maybe_add_hidden_filename_row(ws, config, block_names, pdf_data_list):
         size=defaults.get("font_size", 11),
     )
 
+    for c in range(1, n_fixed + 1):
+        ws.cell(row=2, column=c).border = thin_border
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_fixed)
-    cell = ws.cell(row=2, column=1)
-    cell.border = thin_border
-    ws.cell(row=2, column=n_fixed).border = thin_border
 
     for b_idx, (df, _, _) in enumerate(pdf_data_list):
         filename = df.columns.get_level_values(0)[0]
         sc = n_fixed + b_idx * block_size + 1
         ec = sc + block_size - 1
+        for c in range(sc, ec + 1):
+            ws.cell(row=2, column=c).border = thin_border
         if block_size > 1:
             ws.merge_cells(start_row=2, start_column=sc, end_row=2, end_column=ec)
         cell = ws.cell(row=2, column=sc)
         cell.value = filename
         cell.font = normal_font
-        cell.border = thin_border
-        ws.cell(row=2, column=ec).border = thin_border
 
     ws.row_dimensions[2].hidden = True
     return True
@@ -341,9 +362,7 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
 
     if output_path is None:
         folder_basename = os.path.basename(target_dir)
-        parts = folder_basename.split()
-        first_two = " ".join(parts[:2]) if len(parts) >= 2 else (parts[0] if parts else "unknown")
-        output_name = f"конкурент {first_two}.xlsx"
+        output_name = f"конкурент {folder_basename}.xlsx"
         output_path = os.path.join(target_dir, output_name)
     else:
         output_name = os.path.basename(output_path)
@@ -465,7 +484,7 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
 
     stale_ranges = list(ws.merged_cells.ranges)
     for mc in stale_ranges:
-        if data_start <= mc.min_row <= data_end:
+        if mc.min_row < total_row and mc.min_row >= data_start:
             ws.merged_cells.remove(mc)
 
     meta_start_actual = meta_start
@@ -475,6 +494,13 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
         for b in existing_blocks:
             ws.merge_cells(start_row=mr, start_column=b["start"],
                            end_row=mr, end_column=b["end"])
+    meta_font = Font(name=config["defaults"].get("font_name", "Calibri"), size=14)
+    meta_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for mr in range(meta_start_actual, meta_end_actual + 1):
+        for mc in range(1, n_fixed + len(existing_blocks) * block_size + 1):
+            cell = ws.cell(row=mr, column=mc)
+            cell.font = meta_font
+            cell.alignment = meta_center
 
     for b in existing_blocks:
         _auto_fit_block_columns(ws, b["start"], data_end, block_size)
