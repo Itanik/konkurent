@@ -3,15 +3,15 @@
   "fixed_columns": [
     { "header": "№ поз",     "width": 5.9 },
     { "header": "Название позиции", "width": 42.7 },
-    { "header": "кол-во",    "width": 10.6 }
+    { "header": "Кол-во",    "width": 10.6 }
   ],
   "block_columns": [
-    { "header": "предложено",       "width": 31.7 },
-    { "header": "кол-во",           "width": 6.3 },
-    { "header": "ед.изм",           "width": 8.0 },
-    { "header": "ц/ед, с НДС",     "width": 12 },
-    { "header": "сумма, без НДС",  "width": 12, "hidden": true },
-    { "header": "сумма, с НДС",    "width": 13 }
+    { "header": "Предложено",       "width": 31.7 },
+    { "header": "Кол-во",           "width": 6.3 },
+    { "header": "Ед.изм",           "width": 8.0 },
+    { "header": "Ц/ед, с НДС",     "width": 12 },
+    { "header": "Сумма, без НДС",  "width": 12, "hidden": true },
+    { "header": "Сумма, с НДС",    "width": 13 }
   ],
   "row": {
     "request_name": 1,
