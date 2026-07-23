@@ -3,7 +3,8 @@ cd /d "%~dp0"
 
 echo === Cleaning previous build ===
 rmdir /s /q "dist\kongkurent" 2>nul
-rmdir /s /q "build\kongkurent" 2>nul
+rmdir /s /q "build" 2>nul
+del /f /q "kongkurent.spec" 2>nul
 echo Done
 
 echo === Installation pyinstaller ===

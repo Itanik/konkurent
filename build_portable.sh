@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")"
 
 echo "=== Cleaning previous build ==="
-rm -rf dist/конкурент build/конкурент
+rm -rf dist/конкурент build конкурент.spec
 echo "Done"
 
 echo "=== Установка pyinstaller ==="
