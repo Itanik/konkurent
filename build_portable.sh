@@ -3,6 +3,10 @@ set -e
 
 cd "$(dirname "$0")"
 
+echo "=== Cleaning previous build ==="
+rm -rf dist/конкурент build/конкурент
+echo "Done"
+
 echo "=== Установка pyinstaller ==="
 .venv/bin/pip install pyinstaller -q
 
