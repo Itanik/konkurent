@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
 import '../../utils/format.dart';
+import '../../utils/request_items_parse.dart';
 import '../constants.dart';
 import 'drag_types.dart';
 import 'editable_cell.dart';
@@ -65,6 +66,15 @@ class OfferRow extends ConsumerWidget {
                   value: current.itemName,
                   onChanged: (v) =>
                       notifier.updateOffer(supplierId, current.copyWith(itemName: v)),
+                  onPaste: (text) {
+                    if (!text.contains('\t') && !text.contains('\n')) {
+                      return false;
+                    }
+                    final items = parseRequestItems(text);
+                    if (items.isEmpty) return false;
+                    notifier.pasteOffers(supplierId, index, items);
+                    return true;
+                  },
                 ),
               ),
               IconButton(

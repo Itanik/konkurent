@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_state_provider.dart';
+import '../../utils/request_items_parse.dart';
 import '../constants.dart';
 import 'editable_cell.dart';
 import 'grid_box.dart';
@@ -31,6 +33,12 @@ class FixedPanel extends ConsumerWidget {
               children: [
                 Expanded(
                   child: Text('Позиции заявки', style: headerStyle),
+                ),
+                IconButton(
+                  key: const ValueKey('fixed.pasteRequestItems'),
+                  tooltip: 'Вставить список из буфера',
+                  icon: const Icon(Icons.content_paste),
+                  onPressed: () => _pasteFromClipboard(notifier),
                 ),
                 IconButton(
                   key: const ValueKey('fixed.addRequestItem'),
@@ -68,6 +76,17 @@ class FixedPanel extends ConsumerWidget {
                       ? state.requestItems[i].name
                       : '',
                   onChanged: (v) => notifier.updateRequestItem(i, name: v),
+                  onPaste: (text) {
+                    final items = parseRequestItems(text);
+                    if (items.length < 2 &&
+                        !text.contains('\t') &&
+                        !text.contains('\n')) {
+                      return false;
+                    }
+                    if (items.isEmpty) return false;
+                    notifier.pasteRequestItems(i, items);
+                    return true;
+                  },
                 ),
               ),
               GridBox(
@@ -105,6 +124,13 @@ class FixedPanel extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  Future<void> _pasteFromClipboard(AppStateNotifier notifier) async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final items = parseRequestItems(data?.text ?? '');
+    if (items.isEmpty) return;
+    notifier.pasteRequestItems(0, items);
   }
 
   Widget _header(

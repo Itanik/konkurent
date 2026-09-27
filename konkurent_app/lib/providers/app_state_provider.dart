@@ -127,6 +127,47 @@ class AppStateNotifier extends Notifier<AppState> {
     state = state.copyWith(requestItems: items);
   }
 
+  /// Вставка списка позиций заявки: строки заменяются начиная с [startIndex],
+  /// при нехватке — добавляются, «хвост» существующих строк не трогается.
+  void pasteRequestItems(int startIndex, List<RequestItem> items) {
+    if (items.isEmpty) return;
+    final list = [...state.requestItems];
+    while (list.length < startIndex) {
+      list.add(RequestItem.empty());
+    }
+    for (var i = 0; i < items.length; i++) {
+      final idx = startIndex + i;
+      if (idx < list.length) {
+        list[idx] = items[i];
+      } else {
+        list.add(items[i]);
+      }
+    }
+    state = state.copyWith(requestItems: list);
+  }
+
+  /// Вставка списка в колонку «Предложено» поставщика: заполняет только
+  /// названия предложений (количество/единицу не трогаем).
+  void pasteOffers(String supplierId, int startIndex, List<RequestItem> items) {
+    if (items.isEmpty) return;
+    _updateSupplier(supplierId, (s) {
+      final offers = [...s.offers];
+      while (offers.length < startIndex) {
+        offers.add(Offer.empty());
+      }
+      for (var i = 0; i < items.length; i++) {
+        final idx = startIndex + i;
+        final offer = Offer(id: newId(), itemName: items[i].name);
+        if (idx < offers.length) {
+          offers[idx] = offer;
+        } else {
+          offers.add(offer);
+        }
+      }
+      return s.copyWith(offers: offers);
+    });
+  }
+
   void _updateSupplier(
     String id,
     SupplierBlock Function(SupplierBlock) transform,

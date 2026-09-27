@@ -17,55 +17,56 @@ class ComparisonTable extends ConsumerWidget {
     final state = ref.watch(appStateProvider);
     final notifier = ref.read(appStateProvider.notifier);
 
-    if (state.suppliers.isEmpty) {
-      return _EmptyState(onAdd: () {
-        notifier.addSupplier(SupplierBlock.empty());
-      });
-    }
-
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Панель заявки видна всегда: список позиций заявки можно заполнять
+          // ещё до появления поставщиков (в т.ч. вставкой из буфера).
           const FixedPanel(),
           Expanded(
-            child: SingleChildScrollView(
-              key: const ValueKey('suppliers.horizontalScroll'),
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < state.suppliers.length; i++)
-                    DragTarget<SupplierDrag>(
-                      onWillAcceptWithDetails: (details) =>
-                          details.data.supplierId != state.suppliers[i].id,
-                      onAcceptWithDetails: (details) {
-                        final from = state.suppliers.indexWhere(
-                            (s) => s.id == details.data.supplierId);
-                        if (from == -1) return;
-                        notifier.reorderSuppliers(from, i);
-                      },
-                      builder: (context, candidates, rejected) {
-                        final column = SupplierColumn(
-                          supplierId: state.suppliers[i].id,
-                          index: i,
-                        );
-                        if (candidates.isEmpty) return column;
-                        return DecoratedBox(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
+            child: state.suppliers.isEmpty
+                ? _EmptyState(onAdd: () {
+                    notifier.addSupplier(SupplierBlock.empty());
+                  })
+                : SingleChildScrollView(
+                    key: const ValueKey('suppliers.horizontalScroll'),
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var i = 0; i < state.suppliers.length; i++)
+                          DragTarget<SupplierDrag>(
+                            onWillAcceptWithDetails: (details) =>
+                                details.data.supplierId !=
+                                state.suppliers[i].id,
+                            onAcceptWithDetails: (details) {
+                              final from = state.suppliers.indexWhere(
+                                  (s) => s.id == details.data.supplierId);
+                              if (from == -1) return;
+                              notifier.reorderSuppliers(from, i);
+                            },
+                            builder: (context, candidates, rejected) {
+                              final column = SupplierColumn(
+                                supplierId: state.suppliers[i].id,
+                                index: i,
+                              );
+                              if (candidates.isEmpty) return column;
+                              return DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: column,
+                              );
+                            },
                           ),
-                          child: column,
-                        );
-                      },
+                      ],
                     ),
-                ],
-              ),
-            ),
+                  ),
           ),
         ],
       ),
@@ -80,7 +81,8 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -89,7 +91,8 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 16),
           const Text('Таблица пуста'),
           const SizedBox(height: 8),
-          const Text('Перетащите счёт или добавьте поставщика вручную'),
+          const Text('Перетащите счёт или добавьте поставщика вручную',
+              textAlign: TextAlign.center),
           const SizedBox(height: 16),
           FilledButton.icon(
             key: const ValueKey('empty.addSupplier'),

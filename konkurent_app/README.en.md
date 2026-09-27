@@ -42,6 +42,7 @@ lib/
     ├── app_toolbar.dart          AppBar: request name + actions
     ├── constants.dart            grid sizes, meta rows
     ├── utils/format.dart         number formatting and parsing
+    ├── utils/request_items_parse.dart  parsing a pasted item list
     ├── comparison_table/         the table (fixed_panel, supplier_column, offer_row…)
     └── dialogs/                  "our session" open dialog
 ```
@@ -97,6 +98,7 @@ flutter build windows --release
 - `test/models_test.dart` — serialization and computed fields.
 - `test/app_state_provider_test.dart` — `AppState` mutations.
 - `test/format_test.dart` — number formatting/parsing.
+- `test/request_items_parse_test.dart` — parsing a pasted item list.
 - `test/sidecar_roundtrip_test.dart` — real `sidecar.py`: export → import,
   xlsx price-list recognition, foreign-file detection. Skipped when `../.venv`
   or `sidecar.py` is missing.

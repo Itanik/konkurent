@@ -41,6 +41,7 @@ lib/
     ├── app_toolbar.dart          AppBar: имя заявки + действия
     ├── constants.dart            размеры сетки, мета-строки
     ├── utils/format.dart         форматирование и парсинг чисел
+    ├── utils/request_items_parse.dart  разбор вставленного списка позиций
     ├── comparison_table/         таблица (fixed_panel, supplier_column, offer_row…)
     └── dialogs/                  диалог открытия «своей» сессии
 ```
@@ -97,6 +98,7 @@ flutter build windows --release
 - `test/models_test.dart` — сериализация и вычисляемые поля.
 - `test/app_state_provider_test.dart` — мутации `AppState`.
 - `test/format_test.dart` — формат/парсинг чисел.
+- `test/request_items_parse_test.dart` — разбор вставленного списка позиций.
 - `test/sidecar_roundtrip_test.dart` — реальный `sidecar.py`: export → import,
   recognize xlsx-прайса, определение чужого файла. Пропускается, если нет
   `../.venv` или `sidecar.py`.

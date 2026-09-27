@@ -67,6 +67,10 @@ void main() {
       );
       expect(state.maxRows, 3);
     });
+
+    test('минимум одна строка даже на пустой таблице', () {
+      expect(const AppState().maxRows, 1);
+    });
   });
 
   group('JSON round-trip', () {

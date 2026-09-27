@@ -91,4 +91,47 @@ void main() {
     notifier().addOffer('s1');
     expect(state().maxRows, 3);
   });
+
+  test('pasteRequestItems перезаписывает и доращивает, хвост не трогает', () {
+    notifier().addRequestItem();
+    notifier().addRequestItem();
+    notifier().updateRequestItem(0, name: 'Старое', qty: '1');
+    notifier().updateRequestItem(1, name: 'Второе', qty: '2');
+    notifier().updateRequestItem(2, name: 'Хвост', qty: '3');
+
+    notifier().pasteRequestItems(0, const [
+      RequestItem(id: 'p1', name: 'A', qty: '10'),
+      RequestItem(id: 'p2', name: 'B', qty: '20'),
+      RequestItem(id: 'p3', name: 'C', qty: '30'),
+      RequestItem(id: 'p4', name: 'D', qty: '40'),
+    ]);
+
+    final items = state().requestItems;
+    expect(items, hasLength(4));
+    expect(items.map((e) => e.name).toList(), ['A', 'B', 'C', 'D']);
+    expect(items[0].qty, '10');
+  });
+
+  test('pasteRequestItems с непустого индекса заполняет пропуски', () {
+    notifier().pasteRequestItems(2, const [
+      RequestItem(id: 'p1', name: 'X', qty: ''),
+    ]);
+    final items = state().requestItems;
+    expect(items, hasLength(3));
+    expect(items[0].name, '');
+    expect(items[2].name, 'X');
+  });
+
+  test('pasteOffers заполняет только названия и доращивает список', () {
+    notifier().addSupplier(block('s1', 'A', [100]));
+    notifier().pasteOffers('s1', 0, const [
+      RequestItem(id: 'p1', name: 'X', qty: '1'),
+      RequestItem(id: 'p2', name: 'Y', qty: '2'),
+      RequestItem(id: 'p3', name: 'Z', qty: '3'),
+    ]);
+    final offers = state().suppliers.first.offers;
+    expect(offers, hasLength(3));
+    expect(offers.map((o) => o.itemName).toList(), ['X', 'Y', 'Z']);
+    expect(offers.first.qty, isNull);
+  });
 }

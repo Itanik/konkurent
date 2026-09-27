@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -254,4 +255,68 @@ void main() {
       ['s2', 's1'],
     );
   });
+
+  testWidgets('Ctrl+V вставляет список позиций заявки', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    await Clipboard.setData(const ClipboardData(
+      text: 'Шпоночный материал 4х4, 5 м.п.\n'
+          'Шпоночный материал 5х5, 5 м.п.\n'
+          'Труба б/ш 27х4, 20 м.п.',
+    ));
+
+    await tapCell(tester, 'fixed.item.0.name');
+    await sendPaste(tester);
+
+    final items = container.read(appStateProvider).requestItems;
+    expect(items, hasLength(3));
+    expect(items[0].name, 'Шпоночный материал 4х4');
+    expect(items[0].qty, '5 м.п.');
+    expect(items[2].name, 'Труба б/ш 27х4');
+    expect(items[2].qty, '20 м.п.');
+  });
+
+  testWidgets('кнопка «Вставить список» заполняет позиции заявки', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    await Clipboard.setData(const ClipboardData(text: 'Позиция A\nПозиция B\nПозиция C'));
+    await tester.tap(find.byKey(const ValueKey('fixed.pasteRequestItems')));
+    await tester.pumpAndSettle();
+
+    final items = container.read(appStateProvider).requestItems;
+    expect(items.map((e) => e.name).toList(), ['Позиция A', 'Позиция B', 'Позиция C']);
+  });
+
+  testWidgets('Ctrl+V вставляет список в «Предложено» поставщика',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: '')],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    await Clipboard.setData(
+        const ClipboardData(text: 'Болт\nГайка\nШайба'));
+    await tapCell(tester, 'offer.o1.item');
+    await sendPaste(tester);
+
+    final offers = container.read(appStateProvider).suppliers.first.offers;
+    expect(offers.map((o) => o.itemName).toList(), ['Болт', 'Гайка', 'Шайба']);
+  });
+}
+
+Future<void> sendPaste(WidgetTester tester) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.keyV);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.keyV);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+  await tester.pumpAndSettle();
 }

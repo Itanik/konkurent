@@ -111,12 +111,17 @@ The app then finds the sidecar next to itself and can run from any directory.
    new supplier block appears on the right.
 2. **Manually** — add a supplier with the toolbar button or fill the request rows
    on the left.
-3. **Editing** — clicking a cell turns it into an input field; Enter or clicking
+3. **Paste a list** — copy a list of items (one per line) and press Ctrl+V in the
+   "Item name" cell: the request rows are filled and grown as needed. It also works
+   in a supplier's "Offered" column and via the "Paste list" button in the request
+   panel header. Name and quantity are split by tab (Excel copy) or by the last
+   comma (`Шпоночный материал 4х4, 5 м.п.`).
+4. **Editing** — clicking a cell turns it into an input field; Enter or clicking
    away commits the value.
-4. **Reordering** — drag the handle (⠿) in a block header to swap suppliers, or a
+5. **Reordering** — drag the handle (⠿) in a block header to swap suppliers, or a
    row handle to change the order of offers within a block.
-5. **Sorting** — the "Sort by total" button puts the cheapest supplier on the left.
-6. **Saving** — "Save xlsx" exports the table; "Open…" loads a previously saved
+6. **Sorting** — the "Sort by total" button puts the cheapest supplier on the left.
+7. **Saving** — "Save xlsx" exports the table; "Open…" loads a previously saved
    file.
 
 ---

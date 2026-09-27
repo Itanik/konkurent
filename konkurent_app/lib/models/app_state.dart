@@ -240,13 +240,15 @@ class AppState {
   final List<SupplierBlock> suppliers;
 
   /// Высота таблицы — производная: максимум строк среди предложений
-  /// поставщиков и позиций заявки.
+  /// поставщиков и позиций заявки, но не меньше одной видимой строки.
   int get maxRows {
     var maxOffers = 0;
     for (final s in suppliers) {
       if (s.offers.length > maxOffers) maxOffers = s.offers.length;
     }
-    return maxOffers > requestItems.length ? maxOffers : requestItems.length;
+    final rows =
+        maxOffers > requestItems.length ? maxOffers : requestItems.length;
+    return rows < 1 ? 1 : rows;
   }
 
   AppState copyWith({

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Ячейка таблицы с inline-редактированием: показывает текст, по клику
 /// превращается в [TextField]. Подтверждение по Enter / Tab / потере фокуса.
@@ -13,6 +14,7 @@ class EditableCell extends StatefulWidget {
     this.padding = const EdgeInsets.symmetric(horizontal: 8),
     this.testId,
     this.hint,
+    this.onPaste,
   });
 
   final String value;
@@ -23,6 +25,11 @@ class EditableCell extends StatefulWidget {
   final EdgeInsets padding;
   final String? testId;
   final String? hint;
+
+  /// Если задан, Ctrl+V в поле отдаётся сюда. Верните `true`, если вставку
+  /// обработали сами (ячейка выйдет из режима редактирования), иначе текст
+  /// вставится в поле как обычно.
+  final bool Function(String text)? onPaste;
 
   @override
   State<EditableCell> createState() => _EditableCellState();
@@ -74,6 +81,44 @@ class _EditableCellState extends State<EditableCell> {
     }
   }
 
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (widget.onPaste == null || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    final isPaste = (event.logicalKey == LogicalKeyboardKey.keyV &&
+            (keyboard.isControlPressed || keyboard.isMetaPressed)) ||
+        (event.logicalKey == LogicalKeyboardKey.insert &&
+            keyboard.isShiftPressed);
+    if (!isPaste) return KeyEventResult.ignored;
+    _handlePaste();
+    return KeyEventResult.handled;
+  }
+
+  Future<void> _handlePaste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text ?? '';
+    if (!mounted) return;
+    final consumed = widget.onPaste?.call(text) ?? false;
+    if (consumed) {
+      setState(() => _editing = false);
+      return;
+    }
+    _insertText(text);
+  }
+
+  void _insertText(String text) {
+    final value = _controller.value;
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : value.text.length;
+    final next = value.text.replaceRange(start, end, text);
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + text.length),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final display = Padding(
@@ -105,25 +150,28 @@ class _EditableCellState extends State<EditableCell> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      child: TextField(
-        key: widget.testId != null
-            ? ValueKey<String>('${widget.testId}.field')
-            : null,
-        controller: _controller,
-        focusNode: _focus,
-        autofocus: true,
-        textAlign: widget.textAlign,
-        keyboardType: widget.numeric
-            ? const TextInputType.numberWithOptions(decimal: true)
-            : TextInputType.text,
-        style: Theme.of(context).textTheme.bodyMedium,
-        decoration: const InputDecoration(
-          isDense: true,
-          border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Focus(
+        onKeyEvent: _onKeyEvent,
+        child: TextField(
+          key: widget.testId != null
+              ? ValueKey<String>('${widget.testId}.field')
+              : null,
+          controller: _controller,
+          focusNode: _focus,
+          autofocus: true,
+          textAlign: widget.textAlign,
+          keyboardType: widget.numeric
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : TextInputType.text,
+          style: Theme.of(context).textTheme.bodyMedium,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          ),
+          onSubmitted: (_) => _commit(),
+          onTapOutside: (_) => _commit(),
         ),
-        onSubmitted: (_) => _commit(),
-        onTapOutside: (_) => _commit(),
       ),
     );
   }
