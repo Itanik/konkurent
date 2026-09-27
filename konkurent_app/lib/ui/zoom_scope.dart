@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/zoom_provider.dart';
 
-/// Равномерно масштабирует всё приложение: логический размер окна уменьшается
-/// в [zoom] раз, а отрисованное содержимое растягивается обратно (`Transform`).
-/// Подмена `MediaQuery.size` держит диалоги по центру, а Flutter сам инвертирует
-/// transform при обработке указателя.
+/// Пропорционально масштабирует текст и иконки всего приложения через
+/// `MediaQuery.textScaler` и `IconTheme`. Размеры ячеек таблицы масштабируются
+/// отдельно метриками (`tableMetricsProvider`) — это даёт реальный обзор
+/// (в окно влезает больше колонок/строк), без `Transform` и зазоров.
 class ZoomScope extends ConsumerWidget {
   const ZoomScope({super.key, required this.child});
 
@@ -18,13 +18,14 @@ class ZoomScope extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final zoom = ref.watch(zoomProvider);
     final notifier = ref.read(zoomProvider.notifier);
+    final media = MediaQuery.of(context);
 
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.equal, control: true):
             notifier.zoomIn,
-        const SingleActivator(LogicalKeyboardKey.equal, control: true, shift: true):
-            notifier.zoomIn,
+        const SingleActivator(LogicalKeyboardKey.equal,
+            control: true, shift: true): notifier.zoomIn,
         const SingleActivator(LogicalKeyboardKey.numpadAdd, control: true):
             notifier.zoomIn,
         const SingleActivator(LogicalKeyboardKey.minus, control: true):
@@ -49,33 +50,12 @@ class ZoomScope extends ConsumerWidget {
             notifier.zoomOut();
           }
         },
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth / zoom;
-            final height = constraints.maxHeight / zoom;
-            return ClipRect(
-              child: Transform.scale(
-                scale: zoom,
-                alignment: Alignment.topLeft,
-                child: MediaQuery(
-                  data: MediaQuery.of(context).copyWith(
-                    size: Size(width, height),
-                  ),
-                  // Align даёт дочернему `SizedBox` свободные констрейнты,
-                  // иначе tight-констрейнты окна заставляют контент занять
-                  // полную ширину и при zoom>1 шапка уезжает за экран.
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      width: width,
-                      height: height,
-                      child: child,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
+        child: MediaQuery(
+          data: media.copyWith(textScaler: TextScaler.linear(zoom)),
+          child: IconTheme(
+            data: IconThemeData(size: 24 * zoom),
+            child: child,
+          ),
         ),
       ),
     );

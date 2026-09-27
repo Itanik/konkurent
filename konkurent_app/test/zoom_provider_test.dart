@@ -16,23 +16,30 @@ void main() {
     expect(value(), 1.0);
   });
 
-  test('шаг 10 %', () {
+  test('шаг 5 %', () {
     notifier().zoomIn();
-    expect(value(), 1.1);
+    expect(value(), closeTo(1.05, 1e-9));
     notifier().zoomOut();
     notifier().zoomOut();
-    expect(value(), closeTo(0.9, 1e-9));
+    expect(value(), closeTo(0.95, 1e-9));
   });
 
-  test('ограничение диапазоном 60–160 %', () {
+  test('ограничение диапазоном 75–125 %', () {
     notifier().set(0.1);
     expect(value(), ZoomNotifier.min);
     notifier().set(5.0);
     expect(value(), ZoomNotifier.max);
   });
 
+  test('метрики пропорциональны масштабу', () {
+    container.read(zoomProvider.notifier).set(1.25);
+    final m = container.read(tableMetricsProvider);
+    expect(m.dataRowHeight, closeTo(44 * 1.25, 1e-9));
+    expect(m.itemWidth, closeTo(200 * 1.25, 1e-9));
+  });
+
   test('reset возвращает 100 %', () {
-    notifier().set(1.5);
+    notifier().set(1.25);
     notifier().reset();
     expect(value(), 1.0);
   });

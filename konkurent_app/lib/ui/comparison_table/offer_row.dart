@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
+import '../../providers/zoom_provider.dart';
 import '../../utils/format.dart';
 import '../../utils/request_items_parse.dart';
-import '../constants.dart';
 import 'drag_types.dart';
 import 'editable_cell.dart';
 import 'grid_box.dart';
@@ -33,6 +33,7 @@ class OfferRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final current = offer;
     final notifier = ref.read(appStateProvider.notifier);
+    final m = ref.watch(tableMetricsProvider);
     final hasContent = current != null && !current.isEmpty;
     final keyBase = current != null
         ? 'offer.${current.id}'
@@ -42,8 +43,8 @@ class OfferRow extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         GridBox(
-          width: kItemWidth,
-          height: kDataRowHeight,
+          width: m.itemWidth,
+          height: m.dataRowHeight,
           child: Row(
             children: [
               if (hasContent)
@@ -52,11 +53,11 @@ class OfferRow extends ConsumerWidget {
                   feedback: Material(
                     elevation: 4,
                     child: Chip(
-                          label: Text(
-                            current.itemName.isEmpty
-                                ? 'Позиция'
-                                : current.itemName,
-                          ),
+                      label: Text(
+                        current.itemName.isEmpty
+                            ? 'Позиция'
+                            : current.itemName,
+                      ),
                     ),
                   ),
                   childWhenDragging: const Opacity(
@@ -65,12 +66,12 @@ class OfferRow extends ConsumerWidget {
                   ),
                   child: Padding(
                     key: ValueKey('$keyBase.handle'),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: const Icon(Icons.drag_indicator, size: 18),
+                    padding: EdgeInsets.symmetric(horizontal: 4 * m.scale),
+                    child: Icon(Icons.drag_indicator, size: m.dragIconSize),
                   ),
                 )
               else
-                const SizedBox(width: 26),
+                SizedBox(width: m.handleGap),
               Expanded(
                 child: EditableCell(
                   testId: '$keyBase.item',
@@ -94,22 +95,24 @@ class OfferRow extends ConsumerWidget {
               if (current != null)
                 IconButton(
                   key: ValueKey('$keyBase.delete'),
-                  iconSize: 16,
+                  iconSize: m.actionIconSize,
                   padding: EdgeInsets.zero,
-                  constraints:
-                      const BoxConstraints(minWidth: 24, minHeight: 24),
+                  constraints: BoxConstraints(
+                    minWidth: m.tapTarget,
+                    minHeight: m.tapTarget,
+                  ),
                   tooltip: 'Удалить строку',
                   icon: const Icon(Icons.close),
                   onPressed: () => notifier.removeOfferAt(supplierId, index),
                 )
               else
-                const SizedBox(width: 24),
+                SizedBox(width: m.tapTarget),
             ],
           ),
         ),
         GridBox(
-          width: kQtyWidth,
-          height: kDataRowHeight,
+          width: m.qtyWidth,
+          height: m.dataRowHeight,
           child: EditableCell(
             testId: '$keyBase.qty',
             value: formatEditable(current?.qty),
@@ -126,8 +129,8 @@ class OfferRow extends ConsumerWidget {
           ),
         ),
         GridBox(
-          width: kUnitWidth,
-          height: kDataRowHeight,
+          width: m.unitWidth,
+          height: m.dataRowHeight,
           child: EditableCell(
             testId: '$keyBase.unit',
             value: current?.unit ?? '',
@@ -140,11 +143,11 @@ class OfferRow extends ConsumerWidget {
           ),
         ),
         GridBox(
-          width: kPriceWidth,
-          height: kDataRowHeight,
+          width: m.priceWidth,
+          height: m.dataRowHeight,
           alignment: Alignment.centerRight,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: EdgeInsets.symmetric(horizontal: 8 * m.scale),
             child: Text(
               formatNumber(current?.pricePerUnit),
               key: ValueKey('$keyBase.price'),
@@ -152,8 +155,8 @@ class OfferRow extends ConsumerWidget {
           ),
         ),
         GridBox(
-          width: kSumWidth,
-          height: kDataRowHeight,
+          width: m.sumWidth,
+          height: m.dataRowHeight,
           child: EditableCell(
             testId: '$keyBase.sum',
             value: formatEditable(current?.sumWithVat),

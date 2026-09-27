@@ -184,10 +184,12 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final zoom = ref.watch(zoomProvider);
     return ScaffoldMessenger(
       key: _messengerKey,
       child: Scaffold(
         appBar: AppToolbar(
+          scale: zoom,
           onOpen: _open,
           onSave: _save,
         ),

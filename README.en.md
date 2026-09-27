@@ -127,8 +127,9 @@ The app then finds the sidecar next to itself and can run from any directory.
    file. Exported column widths fit their content, except "Item name" and
    "Offered" (fixed width, text wraps).
 8. **Zoom** — `− / % / +` buttons in the toolbar or `Ctrl+=` / `Ctrl+-` /
-   `Ctrl+0`; `Ctrl`+mouse wheel (outside input fields). Zoom is remembered between
-   launches.
+   `Ctrl+0`; `Ctrl`+mouse wheel (outside input fields). 75–125 % zoom changes the
+   real cell and font sizes: zooming out fits more offers on screen. Zoom is
+   remembered between launches.
 
 ---
 

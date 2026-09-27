@@ -10,23 +10,27 @@ import '../../providers/zoom_provider.dart';
 class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
   const AppToolbar({
     super.key,
+    required this.scale,
     required this.onOpen,
     required this.onSave,
   });
 
+  final double scale;
   final Future<void> Function() onOpen;
   final Future<void> Function() onSave;
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => Size.fromHeight(kToolbarHeight * scale);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(appStateProvider.notifier);
-    final zoom = ref.watch(zoomProvider);
     final zoomNotifier = ref.read(zoomProvider.notifier);
 
     return AppBar(
+      toolbarHeight: kToolbarHeight * scale,
+      iconTheme: IconThemeData(size: 24 * scale),
+      actionsIconTheme: IconThemeData(size: 24 * scale),
       titleSpacing: 12,
       title: SizedBox(
         width: 320,
@@ -67,7 +71,7 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
         TextButton(
           key: const ValueKey('toolbar.zoomReset'),
           onPressed: zoomNotifier.reset,
-          child: Text('${(zoom * 100).round()} %'),
+          child: Text('${(scale * 100).round()} %'),
         ),
         IconButton(
           key: const ValueKey('toolbar.zoomIn'),

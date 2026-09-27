@@ -153,12 +153,15 @@ Scaffold
 
 ## Масштаб интерфейса
 
-- `ZoomScope` (`lib/ui/zoom_scope.dart`) равномерно масштабирует всё приложение:
-  логический размер окна делится на `zoom`, содержимое растягивается
-  `Transform.scale`, `MediaQuery.size` подменяется на логический (диалоги
-  остаются по центру). `Align` внутри обязателен — иначе tight-констрейнты окна
-  заставляют контент занять полную ширину и при `zoom > 1` шапка уезжает.
-- `zoomProvider` (`lib/providers/zoom_provider.dart`): 0.6–1.6, шаг 0.1.
+- Масштаб меняет **реальные размеры** таблицы, а не масштабирует готовую картинку:
+  `TableMetrics` (`lib/ui/constants.dart`) умножает высоты строк, ширины колонок,
+  отступы, размеры иконок и тап-таргетов на `scale`. Поэтому при уменьшении в
+  окно влезает больше колонок и строк.
+- `zoomProvider` + `tableMetricsProvider` (`lib/providers/zoom_provider.dart`):
+  диапазон **75–125 %, шаг 5 %**.
+- `ZoomScope` (`lib/ui/zoom_scope.dart`) масштабирует текст и иконки всего
+  приложения через `MediaQuery.textScaler` и `IconTheme` (без `Transform` и
+  зазоров); шапка — `AppBar.toolbarHeight`/`iconTheme` пропорционально.
 - Управление: кнопки `− / % / +` в шапке, `Ctrl+=`, `Ctrl+-`, `Ctrl+0`,
   `Ctrl`+колесо (только вне поля ввода). Масштаб сохраняется в `settings.json`.
 

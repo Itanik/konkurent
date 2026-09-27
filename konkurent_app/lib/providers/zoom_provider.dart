@@ -1,10 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Масштаб интерфейса (1.0 = 100 %). Равномерно масштабирует всё приложение.
+import '../ui/constants.dart';
+
+/// Масштаб таблицы и шапки (1.0 = 100 %). Меняет реальные размеры ячеек,
+/// колонок и шрифта — при уменьшении в окно влезает больше предложений.
 class ZoomNotifier extends Notifier<double> {
-  static const double min = 0.6;
-  static const double max = 1.6;
-  static const double step = 0.1;
+  static const double min = 0.75;
+  static const double max = 1.25;
+  static const double step = 0.05;
 
   @override
   double build() => 1.0;
@@ -22,3 +25,7 @@ class ZoomNotifier extends Notifier<double> {
 }
 
 final zoomProvider = NotifierProvider<ZoomNotifier, double>(ZoomNotifier.new);
+
+/// Размеры таблицы, вычисляемые от текущего масштаба.
+final tableMetricsProvider =
+    Provider<TableMetrics>((ref) => TableMetrics(ref.watch(zoomProvider)));

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_state_provider.dart';
+import '../../providers/zoom_provider.dart';
 import '../../utils/format.dart';
 import '../constants.dart';
 import 'drag_types.dart';
@@ -25,6 +26,7 @@ class SupplierColumn extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appStateProvider);
     final notifier = ref.read(appStateProvider.notifier);
+    final m = ref.watch(tableMetricsProvider);
 
     final supplier = state.suppliers.firstWhere((s) => s.id == supplierId);
     final maxRows = state.maxRows + 1; // + запасная пустая строка
@@ -34,8 +36,8 @@ class SupplierColumn extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         GridBox(
-          width: kSupplierWidth,
-          height: kHeaderRowHeight,
+          width: m.supplierWidth,
+          height: m.headerRowHeight,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Row(
             children: [
@@ -53,8 +55,8 @@ class SupplierColumn extends ConsumerWidget {
                 ),
                 child: Padding(
                   key: ValueKey('supplier.$supplierId.handle'),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: const Icon(Icons.drag_indicator, size: 18),
+                  padding: EdgeInsets.symmetric(horizontal: 4 * m.scale),
+                  child: Icon(Icons.drag_indicator, size: m.dragIconSize),
                 ),
               ),
               Expanded(
@@ -62,15 +64,18 @@ class SupplierColumn extends ConsumerWidget {
                   testId: 'supplier.$supplierId.name',
                   hint: 'Имя поставщика',
                   value: supplier.displayName,
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: EdgeInsets.symmetric(horizontal: 2 * m.scale),
                   onChanged: (v) => notifier.renameSupplier(supplierId, v),
                 ),
               ),
               IconButton(
                 key: ValueKey('supplier.$supplierId.delete'),
-                iconSize: 16,
+                iconSize: m.actionIconSize,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                constraints: BoxConstraints(
+                  minWidth: m.tapTargetLarge,
+                  minHeight: m.tapTargetLarge,
+                ),
                 tooltip: 'Удалить поставщика',
                 icon: const Icon(Icons.close),
                 onPressed: () => notifier.removeSupplier(supplierId),
@@ -81,11 +86,11 @@ class SupplierColumn extends ConsumerWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _subHeader(context, 'Предложено', kItemWidth, TextAlign.left),
-            _subHeader(context, 'Кол-во', kQtyWidth, TextAlign.center),
-            _subHeader(context, 'Ед.', kUnitWidth, TextAlign.center),
-            _subHeader(context, 'Ц/ед', kPriceWidth, TextAlign.center),
-            _subHeader(context, 'Сумма', kSumWidth, TextAlign.right),
+            _subHeader(context, m, 'Предложено', m.itemWidth, TextAlign.left),
+            _subHeader(context, m, 'Кол-во', m.qtyWidth, TextAlign.center),
+            _subHeader(context, m, 'Ед.', m.unitWidth, TextAlign.center),
+            _subHeader(context, m, 'Ц/ед', m.priceWidth, TextAlign.center),
+            _subHeader(context, m, 'Сумма', m.sumWidth, TextAlign.right),
           ],
         ),
         for (var i = 0; i < maxRows; i++)
@@ -108,8 +113,8 @@ class SupplierColumn extends ConsumerWidget {
           ),
         for (final meta in kMetaRows)
           GridBox(
-            width: kSupplierWidth,
-            height: kMetaRowHeight,
+            width: m.supplierWidth,
+            height: m.metaRowHeight,
             child: EditableCell(
               testId: 'supplier.$supplierId.meta.${meta.key}',
               value: supplier.meta.value(meta.key),
@@ -118,12 +123,12 @@ class SupplierColumn extends ConsumerWidget {
             ),
           ),
         GridBox(
-          width: kSupplierWidth,
-          height: kTotalRowHeight,
+          width: m.supplierWidth,
+          height: m.totalRowHeight,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           alignment: Alignment.centerRight,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: EdgeInsets.symmetric(horizontal: 12 * m.scale),
             child: Text(
               formatNumber(supplier.total),
               key: ValueKey('supplier.$supplierId.total'),
@@ -137,19 +142,22 @@ class SupplierColumn extends ConsumerWidget {
 
   Widget _subHeader(
     BuildContext context,
+    TableMetrics m,
     String text,
     double width,
     TextAlign align,
   ) {
     return GridBox(
       width: width,
-      height: kSubHeaderHeight,
+      height: m.subHeaderHeight,
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       alignment: align == TextAlign.center
           ? Alignment.center
-          : (align == TextAlign.right ? Alignment.centerRight : Alignment.centerLeft),
+          : (align == TextAlign.right
+              ? Alignment.centerRight
+              : Alignment.centerLeft),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: EdgeInsets.symmetric(horizontal: 8 * m.scale),
         child: Text(
           text,
           textAlign: align,

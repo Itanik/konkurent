@@ -71,15 +71,30 @@ void main() {
     expect(find.byKey(const ValueKey('toolbar.save')), findsOneWidget);
   });
 
-  testWidgets('кнопки масштаба меняют zoom', (tester) async {
+  testWidgets('кнопки масштаба меняют размер таблицы', (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
-    expect(container.read(zoomProvider), 1.0);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: 'x')],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    final before =
+        tester.getSize(find.byKey(const ValueKey('offerRow.s1.0')));
 
     await tester.tap(find.byKey(const ValueKey('toolbar.zoomIn')));
     await tester.pumpAndSettle();
-    expect(container.read(zoomProvider), closeTo(1.1, 1e-9));
-    expect(find.text('110 %'), findsOneWidget);
+    expect(container.read(zoomProvider), closeTo(1.05, 1e-9));
+    expect(find.text('105 %'), findsOneWidget);
+
+    final after =
+        tester.getSize(find.byKey(const ValueKey('offerRow.s1.0')));
+    expect(after.height, greaterThan(before.height));
 
     await tester.tap(find.byKey(const ValueKey('toolbar.zoomReset')));
     await tester.pumpAndSettle();

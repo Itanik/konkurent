@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_state_provider.dart';
+import '../../providers/zoom_provider.dart';
 import '../../utils/request_items_parse.dart';
 import '../constants.dart';
 import 'editable_cell.dart';
@@ -17,15 +18,17 @@ class FixedPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appStateProvider);
     final notifier = ref.read(appStateProvider.notifier);
+    final m = ref.watch(tableMetricsProvider);
     final maxRows = state.maxRows + 1; // + запасная пустая строка
     final headerStyle = Theme.of(context).textTheme.titleSmall;
+    final horizontal = EdgeInsets.symmetric(horizontal: 8 * m.scale);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         GridBox(
-          width: kFixedWidth,
-          height: kHeaderRowHeight,
+          width: m.fixedWidth,
+          height: m.headerRowHeight,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -46,23 +49,23 @@ class FixedPanel extends ConsumerWidget {
         ),
         Row(
           children: [
-            _header(context, '№', kFixedNumberWidth, TextAlign.center),
-            _header(context, 'Название позиции', kFixedNameWidth),
-            _header(context, 'Кол-во', kFixedQtyWidth, TextAlign.center),
+            _header(context, m, '№', m.fixedNumberWidth, TextAlign.center),
+            _header(context, m, 'Название позиции', m.fixedNameWidth),
+            _header(context, m, 'Кол-во', m.fixedQtyWidth, TextAlign.center),
           ],
         ),
         for (var i = 0; i < maxRows; i++)
           Row(
             children: [
               GridBox(
-                width: kFixedNumberWidth,
-                height: kDataRowHeight,
+                width: m.fixedNumberWidth,
+                height: m.dataRowHeight,
                 alignment: Alignment.center,
                 child: Text('${i + 1}'),
               ),
               GridBox(
-                width: kFixedNameWidth,
-                height: kDataRowHeight,
+                width: m.fixedNameWidth,
+                height: m.dataRowHeight,
                 child: Row(
                   children: [
                     Expanded(
@@ -90,22 +93,24 @@ class FixedPanel extends ConsumerWidget {
                     if (i < state.requestItems.length)
                       IconButton(
                         key: ValueKey('fixed.item.$i.delete'),
-                        iconSize: 16,
+                        iconSize: m.actionIconSize,
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                            minWidth: 24, minHeight: 24),
+                        constraints: BoxConstraints(
+                          minWidth: m.tapTarget,
+                          minHeight: m.tapTarget,
+                        ),
                         tooltip: 'Удалить позицию',
                         icon: const Icon(Icons.close),
                         onPressed: () => notifier.removeRequestItem(i),
                       )
                     else
-                      const SizedBox(width: 24),
+                      SizedBox(width: m.tapTarget),
                   ],
                 ),
               ),
               GridBox(
-                width: kFixedQtyWidth,
-                height: kDataRowHeight,
+                width: m.fixedQtyWidth,
+                height: m.dataRowHeight,
                 child: EditableCell(
                   testId: 'fixed.item.$i.qty',
                   value: i < state.requestItems.length
@@ -120,19 +125,20 @@ class FixedPanel extends ConsumerWidget {
           ),
         for (final meta in kMetaRows)
           GridBox(
-            width: kFixedWidth,
-            height: kMetaRowHeight,
+            width: m.fixedWidth,
+            height: m.metaRowHeight,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(meta.label, style: Theme.of(context).textTheme.bodySmall),
+              padding: horizontal,
+              child:
+                  Text(meta.label, style: Theme.of(context).textTheme.bodySmall),
             ),
           ),
         GridBox(
-          width: kFixedWidth,
-          height: kTotalRowHeight,
+          width: m.fixedWidth,
+          height: m.totalRowHeight,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: horizontal,
             child: Text('Итого:', style: headerStyle),
           ),
         ),
@@ -149,17 +155,19 @@ class FixedPanel extends ConsumerWidget {
 
   Widget _header(
     BuildContext context,
+    TableMetrics m,
     String text,
     double width, [
     TextAlign align = TextAlign.left,
   ]) {
     return GridBox(
       width: width,
-      height: kSubHeaderHeight,
+      height: m.subHeaderHeight,
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      alignment: align == TextAlign.center ? Alignment.center : Alignment.centerLeft,
+      alignment:
+          align == TextAlign.center ? Alignment.center : Alignment.centerLeft,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: EdgeInsets.symmetric(horizontal: 8 * m.scale),
         child: Text(
           text,
           textAlign: align,
