@@ -114,8 +114,18 @@ jobs:
             PY=".venv/Scripts/python.exe"; PIP=".venv/Scripts/pip.exe"
           fi
           "$PIP" install -r requirements.txt pyinstaller
-          if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; else SEP=":"; fi
-          "$PY" -m PyInstaller --onefile sidecar.py --add-data "config.json${SEP}."
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; EXT="pyd"; else SEP=":"; EXT="so"; fi
+          SITE=$("$PY" -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+          MYPYC=$(ls "$SITE"/*__mypyc*."$EXT" 2>/dev/null | head -1)
+          EXTRA=()
+          if [ -n "$MYPYC" ]; then
+            echo "Adding mypyc runtime: $MYPYC"
+            EXTRA=(--add-binary "${MYPYC}${SEP}.")
+          else
+            echo "mypyc runtime not found (ok if no mypyc deps)"
+          fi
+          "$PY" -m PyInstaller --onefile sidecar.py \
+            --add-data "config.json${SEP}." "${EXTRA[@]}"
 
       - uses: subosito/flutter-action@v2
         with:

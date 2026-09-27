@@ -192,10 +192,17 @@ PyInstaller bundle. Anything new that reads a data file at runtime must do the s
   debounced JSON write via `storageServiceProvider`. Tests override both
   `storageServiceProvider` and `fileEngineProvider`. Never call Python from tests.
 - CI (`.github/workflows/build.yml`) has a `flutter` job (`ubuntu-latest` +
-  `windows-latest`): it builds the sidecar with PyInstaller, runs `flutter analyze`
+  `windows-2022`): it builds the sidecar with PyInstaller, runs `flutter analyze`
   / `flutter test`, builds the app, copies the sidecar into the bundle and uploads
   `konkurent-app-*.zip`. Offline UI tests (`integration_test`) are still not run in
   CI — they need Xvfb on Linux runners.
+- **PyInstaller must bundle the mypyc runtime from `playa-pdf`.** `camelot` pulls
+  in `playa-pdf`, which ships a hash-named extension at the *root* of
+  site-packages (`<hash>__mypyc.cpython-*.so` / `.pyd`). PyInstaller does not
+  discover it on its own, so a frozen sidecar fails PDF recognition with
+  `ModuleNotFoundError: No module named '<hash>_mypyc'`. Both `build_portable.*`
+  and the CI sidecar step add it explicitly with
+  `--add-binary "$(ls site-packages/*__mypyc*.<so|pyd>):."`. Keep that flag.
 
 ## Docs
 
