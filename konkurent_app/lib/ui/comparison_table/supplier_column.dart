@@ -94,8 +94,17 @@ class SupplierColumn extends ConsumerWidget {
             supplierId: supplierId,
             index: i,
             offer: i < supplier.offers.length ? supplier.offers[i] : null,
-            onReorder: (fromIndex, toIndex) =>
-                notifier.reorderOffers(supplierId, fromIndex, toIndex),
+            onReorder: (fromIndex, toIndex) {
+              final target = toIndex < supplier.offers.length
+                  ? supplier.offers[toIndex]
+                  : null;
+              if (target == null || target.isEmpty) {
+                // Сброс на пустую строку — оставляем пробел на прежнем месте.
+                notifier.moveOfferToEmpty(supplierId, fromIndex, toIndex);
+              } else {
+                notifier.reorderOffers(supplierId, fromIndex, toIndex);
+              }
+            },
           ),
         for (final meta in kMetaRows)
           GridBox(

@@ -84,6 +84,28 @@ void main() {
         ['s2-o0', 's2-o1']);
   });
 
+  test('moveOfferToEmpty меняет заполненную строку с пустой, оставляя пробел',
+      () {
+    notifier().addSupplier(block('s1', 'A', [100, 200]));
+    notifier().moveOfferToEmpty('s1', 0, 2);
+    final offers = state().suppliers.first.offers;
+    expect(offers, hasLength(3));
+    expect(offers[0].isEmpty, isTrue);
+    expect(offers[1].itemName, 'item 1');
+    expect(offers[2].itemName, 'item 0');
+  });
+
+  test('moveOfferToEmpty в существующий пробел', () {
+    notifier().addSupplier(block('s1', 'A', [100, 200, 300]));
+    notifier().moveOfferToEmpty('s1', 0, 3); // [пусто, item1, item2, item0]
+    expect(state().suppliers.first.offers[0].isEmpty, isTrue);
+    expect(state().suppliers.first.offers[3].itemName, 'item 0');
+
+    notifier().moveOfferToEmpty('s1', 2, 0); // item2 на пробел сверху
+    expect(state().suppliers.first.offers.map((o) => o.itemName).toList(),
+        ['item 2', 'item 1', '', 'item 0']);
+  });
+
   test('setOfferAt изменяет предложение по индексу', () {
     notifier().addSupplier(block('s1', 'A', [100]));
     notifier().setOfferAt('s1', 0, (o) => o.copyWith(itemName: 'new'));

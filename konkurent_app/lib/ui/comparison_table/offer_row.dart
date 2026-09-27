@@ -33,6 +33,7 @@ class OfferRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final current = offer;
     final notifier = ref.read(appStateProvider.notifier);
+    final hasContent = current != null && !current.isEmpty;
     final keyBase = current != null
         ? 'offer.${current.id}'
         : 'offer.empty.$supplierId.$index';
@@ -45,15 +46,17 @@ class OfferRow extends ConsumerWidget {
           height: kDataRowHeight,
           child: Row(
             children: [
-              if (current != null)
+              if (hasContent)
                 Draggable<OfferDrag>(
                   data: OfferDrag(supplierId, index),
                   feedback: Material(
                     elevation: 4,
                     child: Chip(
-                      label: Text(
-                        current.itemName.isEmpty ? 'Позиция' : current.itemName,
-                      ),
+                          label: Text(
+                            current.itemName.isEmpty
+                                ? 'Позиция'
+                                : current.itemName,
+                          ),
                     ),
                   ),
                   childWhenDragging: const Opacity(

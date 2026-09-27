@@ -100,6 +100,25 @@ class AppStateNotifier extends Notifier<AppState> {
     });
   }
 
+  /// Меняет местами предложение с пустой строкой: предложение встаёт на место
+  /// пустой, а на его прежнем месте остаётся пробел. Список дополняется
+  /// пустыми строками до нужного индекса.
+  void moveOfferToEmpty(String supplierId, int fromIndex, int toIndex) {
+    if (fromIndex == toIndex) return;
+    _updateSupplier(supplierId, (s) {
+      final offers = [...s.offers];
+      if (fromIndex < 0 || fromIndex >= offers.length) return s;
+      final need = (fromIndex > toIndex ? fromIndex : toIndex) + 1;
+      while (offers.length < need) {
+        offers.add(Offer.empty());
+      }
+      final item = offers[fromIndex];
+      offers[fromIndex] = offers[toIndex];
+      offers[toIndex] = item;
+      return s.copyWith(offers: _trimTrailingOffers(offers));
+    });
+  }
+
   List<Offer> _trimTrailingOffers(List<Offer> offers) {
     final list = [...offers];
     while (list.isNotEmpty && list.last.isEmpty) {

@@ -379,6 +379,33 @@ void main() {
       ['s2', 's1'],
     );
   });
+
+  testWidgets('drag заполненной строки на пустую оставляет пробел',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              Offer(id: 'o1', itemName: '1'),
+              Offer(id: 'o2', itemName: '2'),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Запасная пустая строка — третья (index 2).
+    await dragTo(tester, 'offer.o1.handle', 'offerRow.s1.2');
+
+    final offers = container.read(appStateProvider).suppliers.first.offers;
+    expect(offers, hasLength(3));
+    expect(offers[0].isEmpty, isTrue);
+    expect(offers[1].id, 'o2');
+    expect(offers[2].id, 'o1');
+  });
 }
 
 Future<void> dragTo(
