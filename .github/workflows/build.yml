@@ -85,7 +85,7 @@ jobs:
             artifact: konkurent-app-linux-zip
             bundle: konkurent_app/build/linux/x64/release/bundle
             zip: konkurent-app-linux.zip
-          - os: windows-latest
+          - os: windows-2022
             target: windows
             artifact: konkurent-app-windows-zip
             bundle: konkurent_app/build/windows/x64/runner/Release
@@ -122,6 +122,16 @@ jobs:
           channel: stable
           flutter-version: "3.32.4"
           cache: true
+
+      - name: Setup MSBuild
+        if: runner.os == 'Windows'
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Flutter doctor
+        if: runner.os == 'Windows'
+        working-directory: konkurent_app
+        shell: bash
+        run: flutter doctor -v
 
       - name: Flutter analyze & test
         working-directory: konkurent_app
