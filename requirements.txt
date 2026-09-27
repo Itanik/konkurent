@@ -1,5 +1,6 @@
 pandas
 camelot-py[cv]
 openpyxl
+python-docx
 customtkinter
 tkinterdnd2

@@ -4,7 +4,6 @@ import json
 import argparse
 import shutil
 import pandas as pd
-import camelot
 from glob import glob
 
 from copy import copy
@@ -17,6 +16,7 @@ from normalizer import process_pdf_tables, STANDARD_COLUMNS
 
 
 def extract_with_camelot(pdf_path):
+    import camelot
     tables = []
     print(f"  Camelot (lattice)...")
     try:
@@ -277,7 +277,7 @@ def _find_or_create_block(ws, existing_blocks, config):
         if col_cfg.get("hidden"):
             ws.column_dimensions[cl].hidden = True
 
-    block = {"start": start, "end": end, "name": "PLACEHOLDER"}
+    block = {"start": start, "end": end, "name": "PLACEHOLDER", "filename": None}
     existing_blocks.append(block)
     existing_blocks.sort(key=lambda b: b["start"])
     return block
@@ -352,7 +352,8 @@ def _maybe_add_hidden_filename_row(ws, config, block_names, pdf_data_list):
 
 
 def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
-                  block_names=None, request_name="", request_items=None):
+                  block_names=None, request_name="", request_items=None,
+                  meta_values=None):
     config = load_config(os.path.join(script_dir, "config.json"))
 
     n_fixed = config["_fixed_len"]
@@ -379,7 +380,7 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
     for b_idx in range(len(pdf_data_list)):
         sc = n_fixed + b_idx * block_size + 1
         ec = sc + block_size - 1
-        existing_blocks.append({"start": sc, "end": ec, "name": ""})
+        existing_blocks.append({"start": sc, "end": ec, "name": "", "filename": None})
 
     data_end = meta_start - 1
     ref_block_start = existing_blocks[0]["start"] if existing_blocks else None
@@ -419,6 +420,7 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
             continue
 
         block = _find_or_create_block(ws, existing_blocks, config)
+        block["filename"] = filename
         effective_name = (block_names or {}).get(filename, filename)
         block["name"] = effective_name
 
@@ -504,6 +506,24 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
 
     for b in existing_blocks:
         _auto_fit_block_columns(ws, b["start"], data_end, block_size)
+
+    if meta_values:
+        meta_labels = [m["label"] for m in config["row"]["meta"]]
+        for b in existing_blocks:
+            fn = b.get("filename")
+            if not fn:
+                continue
+            vals = meta_values.get(fn)
+            if not vals:
+                continue
+            for i, label in enumerate(meta_labels):
+                mr = meta_start_actual + i
+                if mr > meta_end_actual:
+                    break
+                cell = ws.cell(row=mr, column=b["start"])
+                cell.value = vals.get(label, "")
+                cell.font = meta_font
+                cell.alignment = meta_center
 
     wb.save(output_path)
     print(f"\nГотово! Конкурентная таблица сохранена как '{output_name}'")
