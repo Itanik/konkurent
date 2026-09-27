@@ -48,7 +48,11 @@ def _configure_stdout():
 
 
 def _emit(obj):
-    _REAL_STDOUT.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    try:
+        text = json.dumps(obj, ensure_ascii=False)
+        _REAL_STDOUT.write(text + "\n")
+    except (UnicodeEncodeError, ValueError):
+        _REAL_STDOUT.write(json.dumps(obj, ensure_ascii=True) + "\n")
     _REAL_STDOUT.flush()
 
 
@@ -164,7 +168,11 @@ def action_recognize(path):
 
 
 def action_export(output):
-    raw = sys.stdin.read()
+    raw_bytes = sys.stdin.buffer.read() if hasattr(sys.stdin, "buffer") else b""
+    try:
+        raw = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raw = raw_bytes.decode("utf-8", "replace")
     if not raw.strip():
         _fail("Пустое состояние на stdin")
     try:

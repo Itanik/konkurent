@@ -120,7 +120,7 @@ class PythonBridge implements FileEngine {
       [..._prefixArgs, ...args],
       workingDirectory: _workingDirectory,
     );
-    process.stdin.write(stdin ?? '');
+    process.stdin.add(utf8.encode(stdin ?? ''));
     await process.stdin.close();
     final outFuture = process.stdout.transform(utf8.decoder).join();
     final errFuture = process.stderr.transform(utf8.decoder).join();
