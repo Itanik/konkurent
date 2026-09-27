@@ -191,23 +191,20 @@ PyInstaller bundle. Anything new that reads a data file at runtime must do the s
 - State lives in `appStateProvider` (Riverpod `Notifier`); persistence is a
   debounced JSON write via `storageServiceProvider`. Tests override both
   `storageServiceProvider` and `fileEngineProvider`. Never call Python from tests.
-- CI (`.github/workflows/build.yml`) builds only the legacy Python portable
-  builds. The Flutter app is not yet in CI — `flutter test integration_test` needs
-  Xvfb on Linux runners.
+- CI (`.github/workflows/build.yml`) has a `flutter` job (`ubuntu-latest` +
+  `windows-latest`): it builds the sidecar with PyInstaller, runs `flutter analyze`
+  / `flutter test`, builds the app, copies the sidecar into the bundle and uploads
+  `konkurent-app-*.zip`. Offline UI tests (`integration_test`) are still not run in
+  CI — they need Xvfb on Linux runners.
 
-## Known drift — README is behind the code
+## Docs
 
-Trust the code, not `README.md`:
-
-- README says the GUI is CustomTkinter; it was migrated to native `tkinter` + `ttk`
-  (commit `7fcfc7c`). `customtkinter` is still in `requirements.txt` but is imported
-  nowhere — dead dependency.
-- README describes a `konkurent.xlsx` template file with 2 supplier blocks. The
-  template is gone; the workbook is generated from `config.json` and the number of
-  blocks equals the number of selected PDFs.
-- README's default output name (`конкурент <первые 2 слова папки>.xlsx`) is wrong;
-  it is `конкурент <имя папки>.xlsx` (recog.py:366).
-- README omits the "Позиции заявки" tab and the request-name field.
+- Root `README.md` (Russian) and `README.en.md` (English) are current for both
+  frontends; `konkurent_app/README.md` / `README.en.md` are the developer docs.
+  The legacy "README is behind the code" drift has been fixed — keep it that way.
+- `customtkinter` is still listed in `requirements.txt` but is imported nowhere;
+  it is a dead dependency. The GUI is native `tkinter` + `ttk`.
 - Runtime prerequisite that is easy to miss: **Ghostscript** must be on `PATH`
   (`gs` on Linux/macOS, `gswin64c` on Windows) or camelot's lattice mode fails.
-  `gui.py` only logs a warning at startup via `_check_gs`.
+  `gui.py` only logs a warning at startup via `_check_gs`; `sidecar.py` surfaces
+  the failure as an error for the Flutter app.
