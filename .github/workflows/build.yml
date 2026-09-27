@@ -131,7 +131,7 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: konkurent_app
         shell: bash
-        run: flutter doctor -v
+        run: flutter doctor -v || true
 
       - name: Flutter analyze & test
         working-directory: konkurent_app
