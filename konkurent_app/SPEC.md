@@ -91,9 +91,9 @@ Scaffold
     └── ComparisonTable
         ├── TableHeader             — строка 1: имена поставщиков + drag handle
         └── StickyHorizontalScroll
-            ├── FixedPanel (не скроллится горизонтально)
-            │   ├── FixedHeaderRow: ["№", "Название позиции", "Кол-во"]
-            │   ├── FixedDataRows[0..maxRows-1]: EditableCell × 3
+            ├── FixedPanel (не скроллится горизонтально, видна всегда)
+            │   ├── FixedHeaderRow: ["№", "Название позиции", "Кол-во"] + [Вставить список]
+            │   ├── FixedDataRows[0..displayRows-1]: EditableCell × 3 + [×]
             │   └── FixedMetaFooter: 5 меток + строка "Итого:"
             │
             └── ScrollableArea (горизонтальный скролл)
@@ -101,11 +101,19 @@ Scaffold
                     └── SupplierColumn
                         ├── SupplierHeader: DragHandle + EditableText + [×]
                         ├── ColumnSubheader: ["Предложено","Кол-во","Ед.","Ц/ед","Сумма"]
-                        ├── OfferRows[0..maxRows-1] (вертикальный reorder)
+                        ├── OfferRows[0..displayRows-1] (вертикальный reorder)
                         │   └── OfferRow: itemName, qty, unit, price (readonly), sumWithVat
                         ├── MetaRows × 5: EditableCell
                         └── TotalRow: computed SUM(sumWithVat), read-only
 ```
+
+**Пустые строки.** `displayRows = maxRows + 1`: внизу всегда есть одна запасная
+пустая строка, а все пустые ячейки (и у заявки, и у поставщиков) — обычные
+редактируемые `EditableCell`. Кнопок «+» нет: ввод в пустую строку создаёт
+запись, и снизу автоматически появляется новая запасная. Кнопка «×» удаляет
+заполненную строку. «Хвостовые» полностью пустые строки в модели схлопываются
+автоматически (`_trimTrailingOffers` / `_trimTrailingRequestItems`); пустые
+строки в середине сохраняются.
 
 **Inline-редактирование**: клик по ячейке → `TextField` на месте. Подтверждение
 по Enter / Tab / потере фокуса.
@@ -208,7 +216,8 @@ Unit-тесты (`test/`):
 - `format_test.dart` — формат и парсинг чисел
 - `request_items_parse_test.dart` — разбор вставленного списка (запятая, таб, пустые строки)
 - `sidecar_roundtrip_test.dart` — реальный `sidecar.py`: export → import, recognize
-  xlsx-прайса, определение чужого xlsx (пропускается, если нет `.venv`/`sidecar.py`)
+  xlsx-прайса, определение чужого xlsx, геометрия книги при 9 позициях заявки
+  (пропускается, если нет `.venv`/`sidecar.py`)
 
 Integration-тесты (`integration_test/app_test.dart`), запуск `-d linux`:
 - smoke — таблица рендерится, панель инструментов на месте
@@ -217,8 +226,9 @@ Integration-тесты (`integration_test/app_test.dart`), запуск `-d linu
 - сортировка блоков по сумме
 - добавление поставщика кнопкой
 - создание блока из распознанного файла
-- drag-перестановка предложений внутри блока и блоков по горизонтали
+- drag-перестановка предложений внутри блока и блоков по горизонтали (вверх и вниз)
 - вставка списка позиций заявки через Ctrl+V и кнопкой, и в «Предложено»
+- создание предложения вводом в пустую (запасную) строку
 
 Тесты используют `FakeFileEngine` и `InMemoryStorageService` (без Python и ФС).
 

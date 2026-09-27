@@ -109,8 +109,10 @@ The app then finds the sidecar next to itself and can run from any directory.
 
 1. **From an invoice** — drop a file (pdf/xlsx/docx) onto the window. On success a
    new supplier block appears on the right.
-2. **Manually** — add a supplier with the toolbar button or fill the request rows
-   on the left.
+2. **Manually** — fill the request rows on the left or add a supplier with the
+   toolbar button. There is always an empty editable row at the bottom: start
+   typing in it to create an entry, and a new empty row appears below. The "×"
+   button deletes a row.
 3. **Paste a list** — copy a list of items (one per line) and press Ctrl+V in the
    "Item name" cell: the request rows are filled and grown as needed. It also works
    in a supplier's "Offered" column and via the "Paste list" button in the request

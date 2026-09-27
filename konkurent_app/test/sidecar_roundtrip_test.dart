@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -132,5 +133,86 @@ wb.save(r"$other")
     final bridge = PythonBridge.create();
     final outcome = await bridge.importFile(other);
     expect(outcome.status, ImportStatus.foreign);
+  });
+
+  test('экспорт 9 позиций заявки не ломает геометрию книги',
+      skip: skipReason, () async {
+    final bridge = PythonBridge.create();
+
+    AppState stateOf(int requested, List<int> offersPerSupplier) => AppState(
+          requestName: 'Длинная заявка',
+          requestItems: [
+            for (var i = 0; i < requested; i++)
+              RequestItem(id: 'r$i', name: 'Позиция $i', qty: '${i + 1}'),
+          ],
+          suppliers: [
+            for (var s = 0; s < offersPerSupplier.length; s++)
+              SupplierBlock(
+                id: 's$s',
+                displayName: 'Поставщик $s',
+                sourceFileName: 's$s.pdf',
+                offers: [
+                  for (var i = 0; i < offersPerSupplier[s]; i++)
+                    Offer(
+                      id: 's${s}o$i',
+                      itemName: 'S$s-$i',
+                      qty: 1,
+                      unit: 'шт',
+                      sumWithVat: 100.0 * (i + 1),
+                    ),
+                ],
+              ),
+          ],
+        );
+
+    final tmp = Directory.systemTemp.createTempSync('konkurent_geom');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final out = p.join(tmp.path, 'out.xlsx');
+
+    final export = await bridge.export(stateOf(9, [3, 5]), out);
+    expect(export.ok, isTrue, reason: export.error);
+
+    // Round-trip: все позиции и предложения на месте.
+    final import = await bridge.importFile(out);
+    expect(import.status, ImportStatus.ok, reason: import.error);
+    final restored = import.state!;
+    expect(restored.requestItems.where((e) => e.name.isNotEmpty).length, 9);
+    expect(
+      restored.suppliers[0].offers.where((o) => o.itemName.isNotEmpty).length, 3);
+    expect(
+      restored.suppliers[1].offers.where((o) => o.itemName.isNotEmpty).length, 5);
+
+    // Геометрия: мета-раздел начинается сразу после данных, и никакие
+    // объединения не накрывают строки данных (регрессия бага с meta_start).
+    final geometry = '''
+import json
+import openpyxl
+wb = openpyxl.load_workbook(r"$out")
+ws = wb["Заявка"]
+header = next(r for r in range(1, ws.max_row + 1)
+              if str(ws.cell(r, 1).value or "").strip() == "№ поз")
+data_start = header + 1
+meta = next((r for r in range(data_start, ws.max_row + 1)
+             if str(ws.cell(r, 1).value or "").strip() == "Договор:"), None)
+total = next((r for r in range(data_start, ws.max_row + 1)
+              if str(ws.cell(r, 9).value or "").strip() == "Сумма"), None)
+sum_row = total + 1 if total else None
+sum_formula = ws.cell(sum_row, 9).value if sum_row else None
+overlaps = [str(m) for m in ws.merged_cells.ranges
+            if m.min_row >= data_start and meta and m.min_row < meta and m.min_col >= 4]
+print(json.dumps({"data_start": data_start, "meta": meta, "total": total,
+                  "sum_row": sum_row, "sum_formula": sum_formula,
+                  "overlaps": overlaps}))
+''';
+    final res = await Process.run(python!, ['-c', geometry]);
+    expect(res.exitCode, 0, reason: res.stderr.toString());
+    final geo = jsonDecode((res.stdout as String).trim()) as Map<String, dynamic>;
+
+    expect(geo['data_start'], 4);
+    expect(geo['meta'], 13); // 4 + 9 позиций заявки
+    expect(geo['total'], 18); // meta + 5 мета-строк
+    expect(geo['sum_row'], 19);
+    expect(geo['sum_formula'], '=SUM(I4:I12)');
+    expect(geo['overlaps'], isEmpty);
   });
 }

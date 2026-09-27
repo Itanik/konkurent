@@ -393,6 +393,7 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
                 ws.insert_rows(row_idx, 1)
                 data_end += 1
                 total_row += 1
+                meta_start += 1
                 for b in existing_blocks:
                     for col_offset in range(block_size):
                         _copy_style(
@@ -444,11 +445,9 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
                 bv = bez_nds[i] if i < len(bez_nds) else None
                 _fill_data_row(ws, row_idx, block["start"], row_data, bv)
 
-            first_meta_row_actual = meta_start
             total_row += extra
             data_end += extra
             meta_start += extra
-
             for r in range(data_end - extra + 1, data_end + 1):
                 for b in existing_blocks:
                     for col_offset in range(block_size):

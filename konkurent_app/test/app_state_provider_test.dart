@@ -39,6 +39,16 @@ void main() {
     expect(state().suppliers.map((s) => s.id).toList(), ['s3', 's1', 's2']);
   });
 
+  test('reorderSuppliers двигает блок вниз (на соседний/через один)', () {
+    notifier().addSupplier(block('s1', 'A', [100]));
+    notifier().addSupplier(block('s2', 'B', [200]));
+    notifier().addSupplier(block('s3', 'C', [300]));
+    notifier().reorderSuppliers(0, 1);
+    expect(state().suppliers.map((s) => s.id).toList(), ['s2', 's1', 's3']);
+    notifier().reorderSuppliers(0, 2);
+    expect(state().suppliers.map((s) => s.id).toList(), ['s1', 's3', 's2']);
+  });
+
   test('sortSuppliersByTotal: слева самый выгодный, без сумм — в конце', () {
     notifier().addSupplier(block('s1', 'A', [300]));
     notifier().addSupplier(block('s2', 'B', [100]));
@@ -56,6 +66,16 @@ void main() {
     expect(ids, ['s1-o2', 's1-o0', 's1-o1']);
   });
 
+  test('reorderOffers двигает строку вниз', () {
+    notifier().addSupplier(block('s1', 'A', [100, 200, 300]));
+    notifier().reorderOffers('s1', 0, 1);
+    expect(state().suppliers.first.offers.map((o) => o.id).toList(),
+        ['s1-o1', 's1-o0', 's1-o2']);
+    notifier().reorderOffers('s1', 0, 2);
+    expect(state().suppliers.first.offers.map((o) => o.id).toList(),
+        ['s1-o0', 's1-o2', 's1-o1']);
+  });
+
   test('reorderOffers не трогает другие блоки', () {
     notifier().addSupplier(block('s1', 'A', [100, 200]));
     notifier().addSupplier(block('s2', 'B', [300, 400]));
@@ -64,11 +84,17 @@ void main() {
         ['s2-o0', 's2-o1']);
   });
 
-  test('updateOffer сохраняет изменения по id', () {
+  test('setOfferAt изменяет предложение по индексу', () {
     notifier().addSupplier(block('s1', 'A', [100]));
-    final offer = state().suppliers.first.offers.first;
-    notifier().updateOffer('s1', offer.copyWith(itemName: 'new'));
+    notifier().setOfferAt('s1', 0, (o) => o.copyWith(itemName: 'new'));
     expect(state().suppliers.first.offers.first.itemName, 'new');
+  });
+
+  test('setOfferAt создаёт предложение в пустой строке', () {
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A'));
+    notifier().setOfferAt('s1', 0, (o) => o.copyWith(itemName: 'X'));
+    expect(state().suppliers.first.offers, hasLength(1));
+    expect(state().suppliers.first.offers.first.itemName, 'X');
   });
 
   test('updateRequestItem расширяет список при пропуске', () {
@@ -78,23 +104,30 @@ void main() {
     expect(state().requestItems[2].qty, '5');
   });
 
-  test('removeOffer оставляет минимум одну строку', () {
+  test('removeOfferAt удаляет строку по индексу', () {
+    notifier().addSupplier(block('s1', 'A', [100, 200]));
+    notifier().removeOfferAt('s1', 0);
+    expect(state().suppliers.first.offers.map((o) => o.itemName).toList(),
+        ['item 1']);
+  });
+
+  test('очистка последней строки схлопывает «хвост»', () {
     notifier().addSupplier(block('s1', 'A', [100]));
-    final id = state().suppliers.first.offers.first.id;
-    notifier().removeOffer('s1', id);
-    expect(state().suppliers.first.offers, hasLength(1));
-    expect(state().suppliers.first.offers.first.itemName, '');
+    notifier().setOfferAt('s1', 0, (o) => Offer(id: o.id));
+    expect(state().suppliers.first.offers, isEmpty);
+
+    notifier().updateRequestItem(0, name: 'A');
+    notifier().updateRequestItem(0, name: '');
+    expect(state().requestItems, isEmpty);
   });
 
   test('maxRows растёт при добавлении предложений', () {
     notifier().addSupplier(block('s1', 'A', [100, 200]));
-    notifier().addOffer('s1');
+    notifier().setOfferAt('s1', 2, (o) => o.copyWith(itemName: 'X'));
     expect(state().maxRows, 3);
   });
 
   test('pasteRequestItems перезаписывает и доращивает, хвост не трогает', () {
-    notifier().addRequestItem();
-    notifier().addRequestItem();
     notifier().updateRequestItem(0, name: 'Старое', qty: '1');
     notifier().updateRequestItem(1, name: 'Второе', qty: '2');
     notifier().updateRequestItem(2, name: 'Хвост', qty: '3');

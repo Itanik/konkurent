@@ -10,7 +10,8 @@ import 'drag_types.dart';
 import 'editable_cell.dart';
 import 'grid_box.dart';
 
-/// Строка предложения одного поставщика. Перетаскивается вертикально только
+/// Строка предложения одного поставщика. Пустая строка ([offer] == null) тоже
+/// редактируема: ввод создаёт предложение. Перетаскивается вертикально только
 /// внутри своего блока (drag за handle).
 class OfferRow extends ConsumerWidget {
   const OfferRow({
@@ -23,19 +24,19 @@ class OfferRow extends ConsumerWidget {
 
   final String supplierId;
 
-  /// null — пустая ячейка-заполнитель до maxRows.
+  /// null — пустая (запасная) строка.
   final Offer? offer;
   final int index;
-  final void Function(String offerId, int toIndex) onReorder;
+  final void Function(int fromIndex, int toIndex) onReorder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = offer;
-    if (current == null) {
-      return _EmptyOfferRow(supplierId: supplierId);
-    }
-
     final notifier = ref.read(appStateProvider.notifier);
+    final keyBase = current != null
+        ? 'offer.${current.id}'
+        : 'offer.empty.$supplierId.$index';
+
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -44,28 +45,38 @@ class OfferRow extends ConsumerWidget {
           height: kDataRowHeight,
           child: Row(
             children: [
-              Draggable<OfferDrag>(
-                data: OfferDrag(supplierId, current.id),
-                feedback: Material(
-                  elevation: 4,
-                  child: Chip(label: Text(current.itemName.isEmpty ? 'Позиция' : current.itemName)),
-                ),
-                childWhenDragging: const Opacity(
-                  opacity: 0.3,
-                  child: Icon(Icons.drag_indicator),
-                ),
-                child: Padding(
-                  key: ValueKey('offer.${current.id}.handle'),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: const Icon(Icons.drag_indicator, size: 18),
-                ),
-              ),
+              if (current != null)
+                Draggable<OfferDrag>(
+                  data: OfferDrag(supplierId, index),
+                  feedback: Material(
+                    elevation: 4,
+                    child: Chip(
+                      label: Text(
+                        current.itemName.isEmpty ? 'Позиция' : current.itemName,
+                      ),
+                    ),
+                  ),
+                  childWhenDragging: const Opacity(
+                    opacity: 0.3,
+                    child: Icon(Icons.drag_indicator),
+                  ),
+                  child: Padding(
+                    key: ValueKey('$keyBase.handle'),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: const Icon(Icons.drag_indicator, size: 18),
+                  ),
+                )
+              else
+                const SizedBox(width: 26),
               Expanded(
                 child: EditableCell(
-                  testId: 'offer.${current.id}.item',
-                  value: current.itemName,
-                  onChanged: (v) =>
-                      notifier.updateOffer(supplierId, current.copyWith(itemName: v)),
+                  testId: '$keyBase.item',
+                  value: current?.itemName ?? '',
+                  onChanged: (v) => notifier.setOfferAt(
+                    supplierId,
+                    index,
+                    (o) => o.copyWith(itemName: v),
+                  ),
                   onPaste: (text) {
                     if (!text.contains('\t') && !text.contains('\n')) {
                       return false;
@@ -77,15 +88,19 @@ class OfferRow extends ConsumerWidget {
                   },
                 ),
               ),
-              IconButton(
-                key: ValueKey('offer.${current.id}.delete'),
-                iconSize: 16,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                tooltip: 'Удалить строку',
-                icon: const Icon(Icons.close),
-                onPressed: () => notifier.removeOffer(supplierId, current.id),
-              ),
+              if (current != null)
+                IconButton(
+                  key: ValueKey('$keyBase.delete'),
+                  iconSize: 16,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 24, minHeight: 24),
+                  tooltip: 'Удалить строку',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => notifier.removeOfferAt(supplierId, index),
+                )
+              else
+                const SizedBox(width: 24),
             ],
           ),
         ),
@@ -93,15 +108,16 @@ class OfferRow extends ConsumerWidget {
           width: kQtyWidth,
           height: kDataRowHeight,
           child: EditableCell(
-            testId: 'offer.${current.id}.qty',
-            value: formatEditable(current.qty),
+            testId: '$keyBase.qty',
+            value: formatEditable(current?.qty),
             numeric: true,
             textAlign: TextAlign.center,
             onChanged: (v) {
               final n = parseNumber(v);
-              notifier.updateOffer(
+              notifier.setOfferAt(
                 supplierId,
-                current.copyWith(qty: n, clearQty: n == null),
+                index,
+                (o) => o.copyWith(qty: n, clearQty: n == null),
               );
             },
           ),
@@ -110,11 +126,14 @@ class OfferRow extends ConsumerWidget {
           width: kUnitWidth,
           height: kDataRowHeight,
           child: EditableCell(
-            testId: 'offer.${current.id}.unit',
-            value: current.unit,
+            testId: '$keyBase.unit',
+            value: current?.unit ?? '',
             textAlign: TextAlign.center,
-            onChanged: (v) =>
-                notifier.updateOffer(supplierId, current.copyWith(unit: v)),
+            onChanged: (v) => notifier.setOfferAt(
+              supplierId,
+              index,
+              (o) => o.copyWith(unit: v),
+            ),
           ),
         ),
         GridBox(
@@ -124,8 +143,8 @@ class OfferRow extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Text(
-              formatNumber(current.pricePerUnit),
-              key: ValueKey('offer.${current.id}.price'),
+              formatNumber(current?.pricePerUnit),
+              key: ValueKey('$keyBase.price'),
             ),
           ),
         ),
@@ -133,15 +152,16 @@ class OfferRow extends ConsumerWidget {
           width: kSumWidth,
           height: kDataRowHeight,
           child: EditableCell(
-            testId: 'offer.${current.id}.sum',
-            value: formatEditable(current.sumWithVat),
+            testId: '$keyBase.sum',
+            value: formatEditable(current?.sumWithVat),
             numeric: true,
             textAlign: TextAlign.right,
             onChanged: (v) {
               final n = parseNumber(v);
-              notifier.updateOffer(
+              notifier.setOfferAt(
                 supplierId,
-                current.copyWith(sumWithVat: n, clearSumWithVat: n == null),
+                index,
+                (o) => o.copyWith(sumWithVat: n, clearSumWithVat: n == null),
               );
             },
           ),
@@ -151,55 +171,22 @@ class OfferRow extends ConsumerWidget {
 
     return DragTarget<OfferDrag>(
       onWillAcceptWithDetails: (details) =>
-          details.data.offerId != current.id,
+          details.data.supplierId == supplierId &&
+          details.data.fromIndex != index,
       onAcceptWithDetails: (details) =>
-          onReorder(details.data.offerId, index),
+          onReorder(details.data.fromIndex, index),
       builder: (context, candidates, rejected) {
         if (candidates.isEmpty) return row;
         return DecoratedBox(
           decoration: BoxDecoration(
-            border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary,
+              width: 2,
+            ),
           ),
           child: row,
         );
       },
-    );
-  }
-}
-
-class _EmptyOfferRow extends ConsumerWidget {
-  const _EmptyOfferRow({required this.supplierId});
-
-  final String supplierId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(appStateProvider.notifier);
-    return Opacity(
-      opacity: 0.4,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GridBox(
-            width: kItemWidth,
-            height: kDataRowHeight,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: IconButton(
-                key: ValueKey('offer.add.$supplierId'),
-                iconSize: 18,
-                tooltip: 'Добавить предложение',
-                icon: const Icon(Icons.add),
-                onPressed: () => notifier.addOffer(supplierId),
-              ),
-            ),
-          ),
-          const GridBox(width: kQtyWidth, height: kDataRowHeight),
-          const GridBox(width: kUnitWidth, height: kDataRowHeight),
-          const GridBox(width: kPriceWidth, height: kDataRowHeight),
-          const GridBox(width: kSumWidth, height: kDataRowHeight),
-        ],
-      ),
     );
   }
 }

@@ -311,6 +311,86 @@ void main() {
     final offers = container.read(appStateProvider).suppliers.first.offers;
     expect(offers.map((o) => o.itemName).toList(), ['Болт', 'Гайка', 'Шайба']);
   });
+
+  testWidgets('ввод в пустую строку создаёт предложение', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container
+        .read(appStateProvider.notifier)
+        .addSupplier(const SupplierBlock(id: 's1', displayName: 'А'));
+    await tester.pumpAndSettle();
+
+    await tapCell(tester, 'offer.empty.s1.0.item');
+    await tester.enterText(
+        find.byKey(const ValueKey('offer.empty.s1.0.item.field')), 'Новая');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    final offers = container.read(appStateProvider).suppliers.first.offers;
+    expect(offers, hasLength(1));
+    expect(offers.first.itemName, 'Новая');
+  });
+
+  testWidgets('drag предложения вниз меняет порядок', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              Offer(id: 'o1', itemName: '1'),
+              Offer(id: 'o2', itemName: '2'),
+              Offer(id: 'o3', itemName: '3'),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    await dragTo(tester, 'offer.o1.handle', 'offer.o3.handle');
+    expect(
+      container.read(appStateProvider).suppliers.first.offers.map((o) => o.id),
+      ['o2', 'o3', 'o1'],
+    );
+  });
+
+  testWidgets('drag блока вниз меняет порядок поставщиков', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    final notifier = container.read(appStateProvider.notifier);
+    notifier.addSupplier(const SupplierBlock(
+      id: 's1',
+      displayName: 'Первый',
+      offers: [Offer(id: 'a1', itemName: 'x')],
+    ));
+    notifier.addSupplier(const SupplierBlock(
+      id: 's2',
+      displayName: 'Второй',
+      offers: [Offer(id: 'b1', itemName: 'y')],
+    ));
+    await tester.pumpAndSettle();
+
+    await dragTo(tester, 'supplier.s1.handle', 'supplier.s2.handle');
+    expect(
+      container.read(appStateProvider).suppliers.map((s) => s.id).toList(),
+      ['s2', 's1'],
+    );
+  });
+}
+
+Future<void> dragTo(
+    WidgetTester tester, String fromKey, String toKey) async {
+  final from = find.byKey(ValueKey(fromKey));
+  final to = find.byKey(ValueKey(toKey));
+  final gesture = await tester.startGesture(tester.getCenter(from));
+  await tester.pump(const Duration(milliseconds: 50));
+  await gesture.moveTo(tester.getCenter(to));
+  await tester.pump();
+  await gesture.up();
+  await tester.pumpAndSettle();
 }
 
 Future<void> sendPaste(WidgetTester tester) async {

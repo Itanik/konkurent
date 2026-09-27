@@ -41,10 +41,11 @@ class AppStateNotifier extends Notifier<AppState> {
     _updateSupplier(id, (s) => s.copyWith(displayName: name));
   }
 
+  /// [newIndex] — итоговый индекс, куда встаёт перемещаемый блок (drop на
+  /// колонку с этим индексом).
   void reorderSuppliers(int oldIndex, int newIndex) {
     final list = [...state.suppliers];
     if (oldIndex < 0 || oldIndex >= list.length) return;
-    if (newIndex > oldIndex) newIndex -= 1;
     final item = list.removeAt(oldIndex);
     list.insert(newIndex.clamp(0, list.length), item);
     state = state.copyWith(suppliers: list);
@@ -66,35 +67,45 @@ class AppStateNotifier extends Notifier<AppState> {
 
   // --- предложения ----------------------------------------------------------
 
-  void addOffer(String supplierId) {
-    _updateSupplier(supplierId, (s) => s.copyWith(offers: [...s.offers, Offer.empty()]));
-  }
-
-  void removeOffer(String supplierId, String offerId) {
+  /// Изменяет предложение по индексу, дополняя список пустыми строками до
+  /// нужного индекса. Пустые «хвостовые» строки схлопываются.
+  void setOfferAt(String supplierId, int index, Offer Function(Offer) transform) {
     _updateSupplier(supplierId, (s) {
-      final offers = s.offers.where((o) => o.id != offerId).toList();
-      return s.copyWith(offers: offers.isEmpty ? [Offer.empty()] : offers);
+      final offers = [...s.offers];
+      while (offers.length <= index) {
+        offers.add(Offer.empty());
+      }
+      offers[index] = transform(offers[index]);
+      return s.copyWith(offers: _trimTrailingOffers(offers));
     });
   }
 
-  void updateOffer(String supplierId, Offer updated) {
+  void removeOfferAt(String supplierId, int index) {
     _updateSupplier(supplierId, (s) {
-      final offers = [
-        for (final o in s.offers) if (o.id == updated.id) updated else o,
-      ];
-      return s.copyWith(offers: offers);
+      final offers = [...s.offers];
+      if (index < 0 || index >= offers.length) return s;
+      offers.removeAt(index);
+      return s.copyWith(offers: _trimTrailingOffers(offers));
     });
   }
 
+  /// [newIndex] — итоговый индекс строки, на которую сбросили предложение.
   void reorderOffers(String supplierId, int oldIndex, int newIndex) {
     _updateSupplier(supplierId, (s) {
       final list = [...s.offers];
       if (oldIndex < 0 || oldIndex >= list.length) return s;
-      if (newIndex > oldIndex) newIndex -= 1;
       final item = list.removeAt(oldIndex);
       list.insert(newIndex.clamp(0, list.length), item);
       return s.copyWith(offers: list);
     });
+  }
+
+  List<Offer> _trimTrailingOffers(List<Offer> offers) {
+    final list = [...offers];
+    while (list.isNotEmpty && list.last.isEmpty) {
+      list.removeLast();
+    }
+    return list;
   }
 
   // --- мета -----------------------------------------------------------------
@@ -114,17 +125,21 @@ class AppStateNotifier extends Notifier<AppState> {
       items.add(RequestItem.empty());
     }
     items[index] = items[index].copyWith(name: name, qty: qty);
-    state = state.copyWith(requestItems: items);
-  }
-
-  void addRequestItem() {
-    state = state.copyWith(requestItems: [...state.requestItems, RequestItem.empty()]);
+    state = state.copyWith(requestItems: _trimTrailingRequestItems(items));
   }
 
   void removeRequestItem(int index) {
     if (index < 0 || index >= state.requestItems.length) return;
     final items = [...state.requestItems]..removeAt(index);
-    state = state.copyWith(requestItems: items);
+    state = state.copyWith(requestItems: _trimTrailingRequestItems(items));
+  }
+
+  List<RequestItem> _trimTrailingRequestItems(List<RequestItem> items) {
+    final list = [...items];
+    while (list.isNotEmpty && list.last.isEmpty) {
+      list.removeLast();
+    }
+    return list;
   }
 
   /// Вставка списка позиций заявки: строки заменяются начиная с [startIndex],
@@ -143,7 +158,7 @@ class AppStateNotifier extends Notifier<AppState> {
         list.add(items[i]);
       }
     }
-    state = state.copyWith(requestItems: list);
+    state = state.copyWith(requestItems: _trimTrailingRequestItems(list));
   }
 
   /// Вставка списка в колонку «Предложено» поставщика: заполняет только

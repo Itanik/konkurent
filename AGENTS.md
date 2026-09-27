@@ -131,7 +131,10 @@ PyInstaller bundle. Anything new that reads a data file at runtime must do the s
   (recog.py:487-498). Any new row insertion must follow that pattern.
 - **Row bookkeeping is manual.** `data_start` / `data_end` / `meta_start` / `total_row`
   are ints shifted by hand at every insert site (hidden filename row, request items,
-  overflow rows). Missing one shift silently corrupts the meta/total sections.
+  overflow rows). Missing one shift silently corrupts the meta/total sections — e.g.
+  the request-items overflow branch must also do `meta_start += 1`, otherwise the
+  final meta re-merge lands on top of data rows (this was a real bug for >3 request
+  items). The `sidecar_roundtrip_test` "9 позиций заявки" test guards it.
 - **Borders/alignment must be assigned to the whole range *before* merging** (see
   commit `7444984`). Writing `.value` to a non-anchor cell of a merged range raises
   `AttributeError: 'MergedCell' object attribute 'value' is read-only`.

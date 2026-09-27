@@ -17,7 +17,7 @@ class FixedPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appStateProvider);
     final notifier = ref.read(appStateProvider.notifier);
-    final maxRows = state.maxRows;
+    final maxRows = state.maxRows + 1; // + запасная пустая строка
     final headerStyle = Theme.of(context).textTheme.titleSmall;
 
     return Column(
@@ -39,12 +39,6 @@ class FixedPanel extends ConsumerWidget {
                   tooltip: 'Вставить список из буфера',
                   icon: const Icon(Icons.content_paste),
                   onPressed: () => _pasteFromClipboard(notifier),
-                ),
-                IconButton(
-                  key: const ValueKey('fixed.addRequestItem'),
-                  tooltip: 'Добавить позицию заявки',
-                  icon: const Icon(Icons.add),
-                  onPressed: notifier.addRequestItem,
                 ),
               ],
             ),
@@ -69,24 +63,44 @@ class FixedPanel extends ConsumerWidget {
               GridBox(
                 width: kFixedNameWidth,
                 height: kDataRowHeight,
-                child: EditableCell(
-                  testId: 'fixed.item.$i.name',
-                  hint: 'Позиция ${i + 1}',
-                  value: i < state.requestItems.length
-                      ? state.requestItems[i].name
-                      : '',
-                  onChanged: (v) => notifier.updateRequestItem(i, name: v),
-                  onPaste: (text) {
-                    final items = parseRequestItems(text);
-                    if (items.length < 2 &&
-                        !text.contains('\t') &&
-                        !text.contains('\n')) {
-                      return false;
-                    }
-                    if (items.isEmpty) return false;
-                    notifier.pasteRequestItems(i, items);
-                    return true;
-                  },
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: EditableCell(
+                        testId: 'fixed.item.$i.name',
+                        hint: 'Позиция ${i + 1}',
+                        value: i < state.requestItems.length
+                            ? state.requestItems[i].name
+                            : '',
+                        onChanged: (v) =>
+                            notifier.updateRequestItem(i, name: v),
+                        onPaste: (text) {
+                          final items = parseRequestItems(text);
+                          if (items.length < 2 &&
+                              !text.contains('\t') &&
+                              !text.contains('\n')) {
+                            return false;
+                          }
+                          if (items.isEmpty) return false;
+                          notifier.pasteRequestItems(i, items);
+                          return true;
+                        },
+                      ),
+                    ),
+                    if (i < state.requestItems.length)
+                      IconButton(
+                        key: ValueKey('fixed.item.$i.delete'),
+                        iconSize: 16,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                            minWidth: 24, minHeight: 24),
+                        tooltip: 'Удалить позицию',
+                        icon: const Icon(Icons.close),
+                        onPressed: () => notifier.removeRequestItem(i),
+                      )
+                    else
+                      const SizedBox(width: 24),
+                  ],
                 ),
               ),
               GridBox(

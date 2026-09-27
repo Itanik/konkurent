@@ -23,6 +23,14 @@ class Offer {
 
   factory Offer.empty() => Offer(id: newId());
 
+  /// Полностью пустая строка (нет ни одного заполненного поля).
+  bool get isEmpty =>
+      itemName.isEmpty &&
+      qty == null &&
+      unit.isEmpty &&
+      sumWithVat == null &&
+      sumWithoutVat == null;
+
   /// Вычисляемое значение — никогда не хранится и не экспортируется как число.
   double? get pricePerUnit {
     final q = qty;
@@ -215,6 +223,8 @@ class RequestItem {
   final String qty;
 
   factory RequestItem.empty() => RequestItem(id: newId());
+
+  bool get isEmpty => name.isEmpty && qty.isEmpty;
 
   RequestItem copyWith({String? name, String? qty}) =>
       RequestItem(id: id, name: name ?? this.name, qty: qty ?? this.qty);

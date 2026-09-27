@@ -27,7 +27,7 @@ class SupplierColumn extends ConsumerWidget {
     final notifier = ref.read(appStateProvider.notifier);
 
     final supplier = state.suppliers.firstWhere((s) => s.id == supplierId);
-    final maxRows = state.maxRows;
+    final maxRows = state.maxRows + 1; // + запасная пустая строка
     final headerStyle = Theme.of(context).textTheme.titleSmall;
 
     return Column(
@@ -94,12 +94,8 @@ class SupplierColumn extends ConsumerWidget {
             supplierId: supplierId,
             index: i,
             offer: i < supplier.offers.length ? supplier.offers[i] : null,
-            onReorder: (offerId, toIndex) {
-              final fromIndex =
-                  supplier.offers.indexWhere((o) => o.id == offerId);
-              if (fromIndex == -1) return;
-              notifier.reorderOffers(supplierId, fromIndex, toIndex);
-            },
+            onReorder: (fromIndex, toIndex) =>
+                notifier.reorderOffers(supplierId, fromIndex, toIndex),
           ),
         for (final meta in kMetaRows)
           GridBox(
