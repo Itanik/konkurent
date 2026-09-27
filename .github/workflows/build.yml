@@ -1,11 +1,10 @@
 name: Build & Release
 
 # Как создать релиз:
-#   git tag v1.0.0
-#   git push origin v1.0.0
-# CI соберёт Linux + Windows билды и опубликует GitHub Release
-# с ZIP-архивами (konkurent-linux.zip, konkurent-windows.zip)
-# и автоматическими release notes из коммитов.
+#   git tag v1.1.0
+#   git push origin v1.1.0
+# CI собирает Linux + Windows билды (legacy и Flutter) и публикует GitHub Release
+# с ZIP-архивами и автоматическими release notes из коммитов.
 
 on:
   push:
@@ -76,8 +75,96 @@ jobs:
           name: konkurent-windows-zip
           path: konkurent-windows.zip
 
+  flutter:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            artifact: konkurent-app-linux-zip
+            bundle: konkurent_app/build/linux/x64/release/bundle
+            zip: konkurent-app-linux.zip
+          - os: windows-latest
+            target: windows
+            artifact: konkurent-app-windows-zip
+            bundle: konkurent_app/build/windows/x64/runner/Release
+            zip: konkurent-app-windows.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ghostscript libgtk-3-dev liblzma-dev ninja-build cmake clang pkg-config
+
+      - name: Build Python sidecar
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [ -x .venv/bin/python ]; then
+            PY=".venv/bin/python"; PIP=".venv/bin/pip"
+          else
+            PY=".venv/Scripts/python.exe"; PIP=".venv/Scripts/pip.exe"
+          fi
+          "$PIP" install -r requirements.txt pyinstaller
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; else SEP=":"; fi
+          "$PY" -m PyInstaller --onefile sidecar.py --add-data "config.json${SEP}."
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.32.4"
+          cache: true
+
+      - name: Flutter analyze & test
+        working-directory: konkurent_app
+        shell: bash
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Flutter build
+        working-directory: konkurent_app
+        shell: bash
+        run: flutter build ${{ matrix.target }} --release
+
+      - name: Bundle sidecar
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp dist/sidecar.exe "${{ matrix.bundle }}/"
+          else
+            cp dist/sidecar "${{ matrix.bundle }}/"
+          fi
+
+      - name: Pack (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd konkurent_app/build/linux/x64/release
+          zip -r "$GITHUB_WORKSPACE/${{ matrix.zip }}" bundle
+
+      - name: Pack (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ matrix.bundle }}/*" -DestinationPath "${{ matrix.zip }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.zip }}
+
   release:
-    needs: [linux, windows]
+    needs: [linux, windows, flutter]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
