@@ -119,11 +119,21 @@ class PythonBridge implements FileEngine {
       _executable,
       [..._prefixArgs, ...args],
       workingDirectory: _workingDirectory,
+      // Force Python's stdio to UTF-8; on Windows the default ANSI code page
+      // makes recog/camelot logs invalid UTF-8 for the bridge's decoder.
+      environment: const {
+        'PYTHONUTF8': '1',
+        'PYTHONIOENCODING': 'utf-8',
+      },
     );
     process.stdin.add(utf8.encode(stdin ?? ''));
     await process.stdin.close();
-    final outFuture = process.stdout.transform(utf8.decoder).join();
-    final errFuture = process.stderr.transform(utf8.decoder).join();
+    final outFuture = process.stdout
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .join();
+    final errFuture = process.stderr
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .join();
     final code = await process.exitCode.timeout(
       _timeout,
       onTimeout: () {

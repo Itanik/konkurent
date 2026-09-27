@@ -203,6 +203,12 @@ PyInstaller bundle. Anything new that reads a data file at runtime must do the s
   `ModuleNotFoundError: No module named '<hash>_mypyc'`. Both `build_portable.*`
   and the CI sidecar step add it explicitly with
   `--add-binary "$(ls site-packages/*__mypyc*.<so|pyd>):."`. Keep that flag.
+- **Sidecar stdio is forced to UTF-8.** On Windows the default code page makes
+  the Cyrillic in recog/camelot logs (stderr) invalid UTF-8, so a strict decoder
+  in `PythonBridge` throws `FormatException: Missing extension byte` and masks a
+  successful recognition. `sidecar.py` reconfigures stdout/stderr/stdin, and the
+  bridge starts the child with `PYTHONUTF8=1` + `PYTHONIOENCODING=utf-8` and
+  decodes with `Utf8Decoder(allowMalformed: true)`. Keep all three.
 
 ## Docs
 

@@ -40,11 +40,15 @@ class _Table:
         self.df = df
 
 
-def _configure_stdout():
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+def _configure_stdio():
+    # On Windows the default stdio encoding is the ANSI code page; the Flutter
+    # bridge expects UTF-8 on both stdout (JSON result) and stderr (recog/camelot
+    # logs). Force all three streams to UTF-8.
+    for stream in (sys.stdout, sys.stderr, sys.stdin):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
 
 
 def _emit(obj):
@@ -362,7 +366,7 @@ def action_import(path):
 
 
 def main():
-    _configure_stdout()
+    _configure_stdio()
     parser = argparse.ArgumentParser(description="KonkurentApp Python sidecar")
     parser.add_argument("--action", required=True,
                         choices=["recognize", "export", "import"])
