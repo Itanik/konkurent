@@ -12,18 +12,29 @@ abstract class StorageService {
   Future<void> save(AppState state);
 
   Future<void> clear();
+
+  /// Масштаб интерфейса (UI-настройка, хранится отдельно от сессии).
+  Future<double?> loadZoom();
+
+  Future<void> saveZoom(double zoom);
 }
 
 class FileStorageService implements StorageService {
-  FileStorageService({this.fileName = 'session.json'});
+  FileStorageService({this.fileName = 'session.json', this.settingsName = 'settings.json'});
 
   final String fileName;
+  final String settingsName;
 
-  Future<File> _file() async {
+  Future<Directory> _dir() async {
     final dir = await getApplicationSupportDirectory();
     await dir.create(recursive: true);
-    return File(p.join(dir.path, fileName));
+    return dir;
   }
+
+  Future<File> _file() async => File(p.join((await _dir()).path, fileName));
+
+  Future<File> _settingsFile() async =>
+      File(p.join((await _dir()).path, settingsName));
 
   @override
   Future<AppState?> load() async {
@@ -49,10 +60,31 @@ class FileStorageService implements StorageService {
     final file = await _file();
     if (file.existsSync()) await file.delete();
   }
+
+  @override
+  Future<double?> loadZoom() async {
+    final file = await _settingsFile();
+    if (!file.existsSync()) return null;
+    try {
+      final raw = await file.readAsString();
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      final zoom = json['zoom'];
+      return zoom is num ? zoom.toDouble() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveZoom(double zoom) async {
+    final file = await _settingsFile();
+    await file.writeAsString(jsonEncode({'zoom': zoom}));
+  }
 }
 
 class InMemoryStorageService implements StorageService {
   AppState? _state;
+  double? _zoom;
 
   @override
   Future<AppState?> load() async => _state;
@@ -62,4 +94,10 @@ class InMemoryStorageService implements StorageService {
 
   @override
   Future<void> clear() async => _state = null;
+
+  @override
+  Future<double?> loadZoom() async => _zoom;
+
+  @override
+  Future<void> saveZoom(double zoom) async => _zoom = zoom;
 }

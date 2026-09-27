@@ -218,21 +218,54 @@ def _copy_block_formatting(ws, dst_start, src_start, max_row, block_size):
                         ws.cell(row=row, column=dst_start + i))
 
 
-def _auto_fit_block_columns(ws, block_start, end_row, block_size):
-    for offset in range(1, block_size):
-        if offset >= 3:
+# Колонки, ширина которых остаётся фиксированной (из config.json), а не
+# подгоняется по содержимому: длинные названия переносятся по строкам.
+FIXED_WIDTH_HEADERS = {"Название позиции", "Предложено"}
+
+MAX_AUTO_WIDTH = 60
+
+
+def _cell_display_len(cell):
+    value = cell.value
+    if value is None:
+        return 0
+    text = str(value)
+    if text.startswith("="):
+        # Формулы (Ц/ед, SUM) не должны задавать ширину по своему тексту.
+        return 0
+    number_format = cell.number_format or ""
+    if isinstance(value, (int, float)) and "0.00" in number_format:
+        return len(f"{value:,.2f}".replace(",", " "))
+    return len(text)
+
+
+def _auto_fit_column(ws, col, rows):
+    max_len = 0
+    for r in rows:
+        max_len = max(max_len, _cell_display_len(ws.cell(row=r, column=col)))
+    ws.column_dimensions[get_column_letter(col)].width = min(
+        max_len + 2, MAX_AUTO_WIDTH
+    )
+
+
+def _auto_fit_columns(ws, config, n_fixed, block_size, blocks,
+                      data_start, data_end, total_row):
+    header_row = data_start - 1
+    data_rows = list(range(data_start, data_end + 1))
+
+    for i, col_cfg in enumerate(config["fixed_columns"]):
+        if col_cfg["header"] in FIXED_WIDTH_HEADERS:
             continue
-        col = block_start + offset
-        cl = get_column_letter(col)
-        rows_to_check = [2] + list(range(3, end_row + 1))
-        if offset == block_size - 1:
-            rows_to_check.append(end_row + 1)
-        max_len = 0
-        for r in rows_to_check:
-            val = ws.cell(row=r, column=col).value
-            if val is not None:
-                max_len = max(max_len, len(str(val)))
-        ws.column_dimensions[cl].width = min(max_len + 2, 40)
+        _auto_fit_column(ws, i + 1, [header_row] + data_rows)
+
+    for b in blocks:
+        for offset, col_cfg in enumerate(config["block_columns"]):
+            if col_cfg["header"] in FIXED_WIDTH_HEADERS:
+                continue
+            rows = [header_row] + data_rows
+            if offset == block_size - 1:
+                rows.append(total_row)
+            _auto_fit_column(ws, b["start"] + offset, rows)
 
 
 def _find_or_create_block(ws, existing_blocks, config):
@@ -503,8 +536,8 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
             cell.font = meta_font
             cell.alignment = meta_center
 
-    for b in existing_blocks:
-        _auto_fit_block_columns(ws, b["start"], data_end, block_size)
+    _auto_fit_columns(ws, config, n_fixed, block_size, existing_blocks,
+                      data_start, data_end, total_row)
 
     if meta_values:
         meta_labels = [m["label"] for m in config["row"]["meta"]]

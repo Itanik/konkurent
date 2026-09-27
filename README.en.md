@@ -124,7 +124,11 @@ The app then finds the sidecar next to itself and can run from any directory.
    row handle to change the order of offers within a block.
 6. **Sorting** — the "Sort by total" button puts the cheapest supplier on the left.
 7. **Saving** — "Save xlsx" exports the table; "Open…" loads a previously saved
-   file.
+   file. Exported column widths fit their content, except "Item name" and
+   "Offered" (fixed width, text wraps).
+8. **Zoom** — `− / % / +` buttons in the toolbar or `Ctrl+=` / `Ctrl+-` /
+   `Ctrl+0`; `Ctrl`+mouse wheel (outside input fields). Zoom is remembered between
+   launches.
 
 ---
 

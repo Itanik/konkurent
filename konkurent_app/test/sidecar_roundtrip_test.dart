@@ -200,9 +200,10 @@ sum_row = total + 1 if total else None
 sum_formula = ws.cell(sum_row, 9).value if sum_row else None
 overlaps = [str(m) for m in ws.merged_cells.ranges
             if m.min_row >= data_start and meta and m.min_row < meta and m.min_col >= 4]
+widths = {c: ws.column_dimensions[c].width for c in ("B", "D", "E", "G", "I")}
 print(json.dumps({"data_start": data_start, "meta": meta, "total": total,
                   "sum_row": sum_row, "sum_formula": sum_formula,
-                  "overlaps": overlaps}))
+                  "overlaps": overlaps, "widths": widths}))
 ''';
     final res = await Process.run(python!, ['-c', geometry]);
     expect(res.exitCode, 0, reason: res.stderr.toString());
@@ -214,5 +215,13 @@ print(json.dumps({"data_start": data_start, "meta": meta, "total": total,
     expect(geo['sum_row'], 19);
     expect(geo['sum_formula'], '=SUM(I4:I12)');
     expect(geo['overlaps'], isEmpty);
+
+    // Ширины: «Название позиции» (B) и «Предложено» (D) фиксированы из config,
+    // остальные подгоняются по контенту (и не превышают предел).
+    final widths = geo['widths'] as Map<String, dynamic>;
+    expect(widths['B'], 42.7);
+    expect(widths['D'], 31.7);
+    expect((widths['E'] as num) <= 60, isTrue);
+    expect((widths['I'] as num) <= 60, isTrue);
   });
 }

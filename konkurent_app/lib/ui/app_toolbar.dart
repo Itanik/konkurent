@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
+import '../../providers/zoom_provider.dart';
 
 /// Верхняя панель: имя заявки и действия. Открытие/сохранение делегируются
 /// в AppShell, т.к. требуют доступа к файловому движку и диалогам.
@@ -22,6 +23,8 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(appStateProvider.notifier);
+    final zoom = ref.watch(zoomProvider);
+    final zoomNotifier = ref.read(zoomProvider.notifier);
 
     return AppBar(
       titleSpacing: 12,
@@ -53,6 +56,24 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
           tooltip: 'Сохранить xlsx',
           icon: const Icon(Icons.save_alt),
           onPressed: onSave,
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          key: const ValueKey('toolbar.zoomOut'),
+          tooltip: 'Уменьшить масштаб (Ctrl+-)',
+          icon: const Icon(Icons.remove),
+          onPressed: zoomNotifier.zoomOut,
+        ),
+        TextButton(
+          key: const ValueKey('toolbar.zoomReset'),
+          onPressed: zoomNotifier.reset,
+          child: Text('${(zoom * 100).round()} %'),
+        ),
+        IconButton(
+          key: const ValueKey('toolbar.zoomIn'),
+          tooltip: 'Увеличить масштаб (Ctrl++)',
+          icon: const Icon(Icons.add),
+          onPressed: zoomNotifier.zoomIn,
         ),
         const SizedBox(width: 8),
       ],

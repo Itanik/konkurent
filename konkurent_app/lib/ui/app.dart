@@ -9,10 +9,12 @@ import 'package:path/path.dart' as p;
 import '../models/app_state.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/services.dart';
+import '../providers/zoom_provider.dart';
 import '../services/python_bridge.dart';
 import 'app_toolbar.dart';
 import 'comparison_table/comparison_table.dart';
 import 'dialogs/session_confirm_dialog.dart';
+import 'zoom_scope.dart';
 
 const _typeGroups = [
   XTypeGroup(
@@ -33,6 +35,8 @@ class KonkurentApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
       ),
+      builder: (context, child) =>
+          ZoomScope(child: child ?? const SizedBox.shrink()),
       home: const AppShell(),
     );
   }
@@ -59,6 +63,8 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     ref.listenManual(appStateProvider, (previous, next) => _scheduleSave());
+    ref.listenManual(zoomProvider,
+        (previous, next) => ref.read(storageServiceProvider).saveZoom(next));
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadInitial());
   }
 
@@ -69,9 +75,14 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _loadInitial() async {
-    final saved = await ref.read(storageServiceProvider).load();
+    final storage = ref.read(storageServiceProvider);
+    final saved = await storage.load();
     if (saved != null && mounted) {
       ref.read(appStateProvider.notifier).replaceState(saved);
+    }
+    final zoom = await storage.loadZoom();
+    if (zoom != null && mounted) {
+      ref.read(zoomProvider.notifier).set(zoom);
     }
   }
 

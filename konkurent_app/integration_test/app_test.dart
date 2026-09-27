@@ -6,6 +6,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:konkurent_app/models/app_state.dart';
 import 'package:konkurent_app/providers/app_state_provider.dart';
 import 'package:konkurent_app/providers/services.dart';
+import 'package:konkurent_app/providers/zoom_provider.dart';
 import 'package:konkurent_app/services/python_bridge.dart';
 import 'package:konkurent_app/services/storage_service.dart';
 import 'package:konkurent_app/ui/app.dart';
@@ -68,6 +69,21 @@ void main() {
     expect(find.byKey(const ValueKey('toolbar.addSupplier')), findsOneWidget);
     expect(find.byKey(const ValueKey('toolbar.sort')), findsOneWidget);
     expect(find.byKey(const ValueKey('toolbar.save')), findsOneWidget);
+  });
+
+  testWidgets('кнопки масштаба меняют zoom', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+    expect(container.read(zoomProvider), 1.0);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar.zoomIn')));
+    await tester.pumpAndSettle();
+    expect(container.read(zoomProvider), closeTo(1.1, 1e-9));
+    expect(find.text('110 %'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar.zoomReset')));
+    await tester.pumpAndSettle();
+    expect(container.read(zoomProvider), 1.0);
   });
 
   testWidgets('редактирование предложения сохраняется в состоянии',
