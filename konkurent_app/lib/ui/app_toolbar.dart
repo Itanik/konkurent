@@ -13,11 +13,13 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
     required this.scale,
     required this.onOpen,
     required this.onSave,
+    required this.onNewSession,
   });
 
   final double scale;
   final Future<void> Function() onOpen;
   final Future<void> Function() onSave;
+  final Future<void> Function() onNewSession;
 
   @override
   Size get preferredSize => Size.fromHeight(kToolbarHeight * scale);
@@ -37,6 +39,12 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
         child: const _RequestNameField(),
       ),
       actions: [
+        IconButton(
+          key: const ValueKey('toolbar.newSession'),
+          tooltip: 'Новая сессия',
+          icon: const Icon(Icons.note_add_outlined),
+          onPressed: onNewSession,
+        ),
         IconButton(
           key: const ValueKey('toolbar.addSupplier'),
           tooltip: 'Добавить поставщика',

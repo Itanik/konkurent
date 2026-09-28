@@ -261,6 +261,16 @@ class AppState {
     return rows < 1 ? 1 : rows;
   }
 
+  /// Есть ли в таблице что-то содержательное (для решения о хранении сессии).
+  bool get hasContent {
+    if (requestName.trim().isNotEmpty) return true;
+    if (requestItems.any((e) => !e.isEmpty)) return true;
+    return suppliers.any((s) =>
+        s.displayName.isNotEmpty ||
+        !s.meta.toJson().values.every((v) => (v as String).isEmpty) ||
+        s.offers.any((o) => !o.isEmpty));
+  }
+
   AppState copyWith({
     String? requestName,
     List<RequestItem>? requestItems,

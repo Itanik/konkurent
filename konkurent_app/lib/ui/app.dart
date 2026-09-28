@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
@@ -9,10 +10,12 @@ import 'package:path/path.dart' as p;
 import '../models/app_state.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/services.dart';
+import '../providers/session_provider.dart';
 import '../providers/zoom_provider.dart';
 import '../services/python_bridge.dart';
 import 'app_toolbar.dart';
 import 'comparison_table/comparison_table.dart';
+import 'dialogs/new_session_dialog.dart';
 import 'dialogs/session_confirm_dialog.dart';
 import 'zoom_scope.dart';
 
@@ -56,12 +59,14 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _dragging = false;
   bool _busy = false;
   Timer? _saveDebounce;
+  late final AppLifecycleListener _lifecycle;
 
   FileEngine get _engine => ref.read(fileEngineProvider);
 
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(onExitRequested: _onExitRequested);
     ref.listenManual(appStateProvider, (previous, next) => _scheduleSave());
     ref.listenManual(zoomProvider,
         (previous, next) => ref.read(storageServiceProvider).saveZoom(next));
@@ -71,6 +76,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _lifecycle.dispose();
     super.dispose();
   }
 
@@ -78,6 +84,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     final storage = ref.read(storageServiceProvider);
     final saved = await storage.load();
     if (saved != null && mounted) {
+      // Восстановленная сессия = несохранённые изменения, поэтому базовую
+      // сигнатуру не трогаем (clean = null) — она продолжит сохраняться.
       ref.read(appStateProvider.notifier).replaceState(saved);
     }
     final zoom = await storage.loadZoom();
@@ -88,9 +96,46 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _scheduleSave() {
     _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(milliseconds: 500), () {
-      ref.read(storageServiceProvider).save(ref.read(appStateProvider));
-    });
+    _saveDebounce = Timer(const Duration(milliseconds: 500), _persist);
+  }
+
+  /// Сохраняет сессию только при несохранённых изменениях, иначе удаляет её.
+  void _persist() {
+    if (!mounted) return;
+    final storage = ref.read(storageServiceProvider);
+    if (ref.read(isDirtyProvider)) {
+      storage.save(ref.read(appStateProvider));
+    } else {
+      storage.clear();
+    }
+  }
+
+  void _markClean() {
+    ref
+        .read(cleanSignatureProvider.notifier)
+        .markClean(stateSignature(ref.read(appStateProvider)));
+  }
+
+  Future<AppExitResponse> _onExitRequested() async {
+    _saveDebounce?.cancel();
+    final storage = ref.read(storageServiceProvider);
+    if (ref.read(isDirtyProvider)) {
+      await storage.save(ref.read(appStateProvider));
+    } else {
+      await storage.clear();
+    }
+    return AppExitResponse.exit;
+  }
+
+  Future<void> _onNewSession() async {
+    if (ref.read(isDirtyProvider)) {
+      final confirmed = await confirmNewSession(context);
+      if (!confirmed || !mounted) return;
+    }
+    ref.read(appStateProvider.notifier).reset();
+    _markClean();
+    await ref.read(storageServiceProvider).clear();
+    _snack('Новая сессия');
   }
 
   void _snack(String message) {
@@ -125,6 +170,8 @@ class _AppShellState extends ConsumerState<AppShell> {
           if (!saved || !mounted) return;
         }
         ref.read(appStateProvider.notifier).replaceState(outcome.state!);
+        _markClean();
+        await ref.read(storageServiceProvider).clear();
         _snack('Сессия открыта из ${p.basename(path)}');
         return;
       }
@@ -168,6 +215,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     final outcome = await _engine.export(state, location.path);
     if (outcome.ok) {
+      _markClean();
+      await ref.read(storageServiceProvider).clear();
       _snack('Сохранено: ${outcome.path}');
       return true;
     }
@@ -192,6 +241,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           scale: zoom,
           onOpen: _open,
           onSave: _save,
+          onNewSession: _onNewSession,
         ),
         body: Stack(
           children: [

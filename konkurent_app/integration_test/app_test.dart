@@ -6,6 +6,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:konkurent_app/models/app_state.dart';
 import 'package:konkurent_app/providers/app_state_provider.dart';
 import 'package:konkurent_app/providers/services.dart';
+import 'package:konkurent_app/providers/session_provider.dart';
 import 'package:konkurent_app/providers/zoom_provider.dart';
 import 'package:konkurent_app/services/python_bridge.dart';
 import 'package:konkurent_app/services/storage_service.dart';
@@ -99,6 +100,40 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('toolbar.zoomReset')));
     await tester.pumpAndSettle();
     expect(container.read(zoomProvider), 1.0);
+  });
+
+  testWidgets('новая сессия очищает таблицу после подтверждения',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: 'x')],
+          ),
+        );
+    await tester.pumpAndSettle();
+    expect(container.read(isDirtyProvider), isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar.newSession')));
+    await tester.pumpAndSettle();
+    expect(find.text('Новая сессия?'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('newSession.confirm')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(appStateProvider).suppliers, isEmpty);
+    expect(container.read(isDirtyProvider), isFalse);
+  });
+
+  testWidgets('новая сессия на чистой таблице без подтверждения',
+      (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.byKey(const ValueKey('toolbar.newSession')));
+    await tester.pumpAndSettle();
+    expect(find.text('Новая сессия?'), findsNothing);
   });
 
   testWidgets('редактирование предложения сохраняется в состоянии',

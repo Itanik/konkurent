@@ -130,6 +130,10 @@ The app then finds the sidecar next to itself and can run from any directory.
    `Ctrl+0`; `Ctrl`+mouse wheel (outside input fields). 75–125 % zoom changes the
    real cell and font sizes: zooming out fits more offers on screen. Zoom is
    remembered between launches.
+9. **New session** — the `New session` button clears the table (with a
+   confirmation if there are unsaved changes). An unfinished session is kept
+   between launches only while it has unsaved changes; once saved to xlsx it is
+   not restored.
 
 ---
 

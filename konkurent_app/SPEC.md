@@ -82,6 +82,7 @@ class Offer {
 Scaffold
 ├── AppBar
 │   ├── RequestNameField
+│   ├── [Новая сессия]
 │   ├── [+ Поставщик]
 │   ├── [Сортировать по сумме ↑]    — меняет порядок suppliers
 │   ├── [Открыть…]                  — импорт / открытие сессии
@@ -225,14 +226,22 @@ python sidecar.py --action=import --file=/abs/path/to/saved.xlsx
 
 ## Автосохранение и сессии
 
-- Состояние сессии хранится в JSON-файле `session.json` в app-support каталоге
+- Сессия хранится в JSON-файле `session.json` в app-support каталоге
   (`getApplicationSupportDirectory()`): `~/.local/share/konkurent_app/` (Linux),
-  `%APPDATA%\konkurent_app\` (Windows)
-- При старте загружается последний сохранённый `AppState`
-- При каждом изменении — debounced write (500 мс)
+  `%APPDATA%\konkurent_app\` (Windows).
+- **Сессия сохраняется только при несохранённых изменениях.** «Чистым» состояние
+  делают: успешный экспорт в xlsx, открытие своего xlsx и «Новая сессия»; тогда
+  `session.json` удаляется. Пустое состояние тоже «чистое».
+  Грязность определяется сравнением JSON-сигнатуры с базовой
+  (`cleanSignatureProvider`/`isDirtyProvider`, `lib/providers/session_provider.dart`).
+- При изменении «грязного» состояния — debounced write (500 мс). При закрытии
+  окна `AppLifecycleListener` сохраняет грязное состояние или удаляет чистое.
+- При старте восстанавливается `session.json` (несохранённые изменения); базовая
+  сигнатура не задаётся, поэтому они продолжают сохраняться.
+- Кнопка **«Новая сессия»** в шапке очищает таблицу; если есть несохранённые
+  изменения — с подтверждением.
 - `StorageService` — абстракция: `FileStorageService` (прод) и
-  `InMemoryStorageService` (тесты)
-- «Открыть свой xlsx» → новая сессия, старая перезаписывается (с подтверждением)
+  `InMemoryStorageService` (тесты).
 
 ## Тестирование (для агентной разработки без человека)
 
@@ -242,6 +251,7 @@ Unit-тесты (`test/`):
 - `format_test.dart` — формат и парсинг чисел
 - `request_items_parse_test.dart` — разбор вставленного списка (запятая, таб, пустые строки)
 - `zoom_provider_test.dart` — масштаб: шаг, границы, сброс
+- `session_provider_test.dart` — «грязность» сессии и пометка «сохранено»
 - `sidecar_roundtrip_test.dart` — реальный `sidecar.py`: export → import, recognize
   xlsx-прайса, определение чужого xlsx, геометрия книги при 9 позициях заявки
   (пропускается, если нет `.venv`/`sidecar.py`)
@@ -258,6 +268,7 @@ Integration-тесты (`integration_test/app_test.dart`), запуск `-d linu
 - вставка списка позиций заявки через Ctrl+V и кнопкой, и в «Предложено»
 - создание предложения вводом в пустую (запасную) строку
 - кнопки масштаба меняют zoom
+- «Новая сессия» очищает таблицу (с подтверждением при несохранённых изменениях)
 
 Тесты используют `FakeFileEngine` и `InMemoryStorageService` (без Python и ФС).
 
