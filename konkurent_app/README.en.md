@@ -33,18 +33,24 @@ lib/
 ├── models/app_state.dart         AppState, SupplierBlock, Offer, RequestItem, SupplierMeta
 ├── providers/
 │   ├── app_state_provider.dart   Notifier with all table mutations
-│   └── services.dart             fileEngineProvider, storageServiceProvider
+│   ├── session_provider.dart     cleanSignatureProvider, isDirtyProvider
+│   ├── services.dart             fileEngineProvider, storageServiceProvider
+│   └── zoom_provider.dart        zoomProvider, tableMetricsProvider
 ├── services/
 │   ├── python_bridge.dart        FileEngine + PythonBridge (runs the sidecar)
 │   └── storage_service.dart      StorageService / FileStorageService / InMemoryStorageService
+├── utils/
+│   ├── format.dart               number formatting and parsing
+│   └── request_items_parse.dart  parsing a pasted item list
 └── ui/
     ├── app.dart                  AppShell: autosave, drag&drop, open/export
     ├── app_toolbar.dart          AppBar: request name + actions
     ├── constants.dart            grid sizes, meta rows
-    ├── utils/format.dart         number formatting and parsing
-    ├── utils/request_items_parse.dart  parsing a pasted item list
-    ├── comparison_table/         the table (fixed_panel, supplier_column, offer_row…)
-    └── dialogs/                  "our session" open dialog
+    ├── zoom_scope.dart           applying zoom to the widget tree
+    ├── comparison_table/         the table: comparison_table, fixed_panel,
+    │                             supplier_column, offer_row, editable_cell,
+    │                             grid_box, drag_types
+    └── dialogs/                  new_session_dialog, session_confirm_dialog
 ```
 
 ---
@@ -111,11 +117,13 @@ flutter build windows --release
 ## Limitations
 
 - PDF recognition requires **Ghostscript** in `PATH` (`gs` / `gswin64c`),
-  otherwise camelot's lattice mode fails.
+  otherwise camelot's lattice mode fails (the sidecar appends an install hint
+  to the recognition error).
 - DOCX recognition requires `python-docx` (in `requirements.txt`); without it the
   sidecar returns a clear error.
-- The Flutter app is not yet a CI release; `.github/workflows/build.yml` has a
-  build job (analyze + test + build, with the sidecar placed into the bundle).
+- `.github/workflows/build.yml` builds the app in CI (analyze + test + build,
+  with the sidecar placed into the bundle); a `v*` tag publishes a release with
+  `konkurent-app-*.zip` archives.
 
 ---
 

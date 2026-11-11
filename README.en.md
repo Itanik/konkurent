@@ -1,28 +1,11 @@
 # Comparison Table
 
 A procurement tool: it collects supplier quotes and builds a single comparison
-table. The primary application is **KonkurentApp**, an interactive Flutter
-Desktop editor backed by a shared Python recognition engine.
+table. The application is **KonkurentApp**, an interactive Flutter Desktop
+editor backed by the Python recognition engine (`recog.py`, `normalizer.py`,
+`config.json`).
 
 [Русский](README.md) | **English**
-
----
-
-## Two applications
-
-The project ships two frontends over one engine:
-
-| | **KonkurentApp** (recommended) | Python GUI (legacy) |
-|---|---|---|
-| UI | Flutter Desktop, Material 3 | Tkinter + ttk |
-| Platforms | Windows, Linux | Windows, Linux |
-| Purpose | Interactive table editor | One-shot xlsx generator |
-| Cell editing | yes | no |
-| Reorder rows/blocks | yes (drag&drop) | no |
-| Sort by total | yes | no |
-| Status | actively developed | maintenance only |
-
-The recognition engine (`recog.py`, `normalizer.py`, `config.json`) is shared.
 
 ---
 
@@ -40,10 +23,6 @@ The recognition engine (`recog.py`, `normalizer.py`, `config.json`) is shared.
 - Autosave the session between launches.
 - Computed values (unit price, totals) are never stored as constants — they are
   derived live and exported as Excel formulas.
-
-## Screenshots
-
-_Screenshots placeholder._
 
 ---
 
@@ -100,6 +79,11 @@ executable:
 # Linux: dist/sidecar → next to bundle/konkurent_app
 # Windows: dist\sidecar.exe → next to Release\konkurent_app.exe
 ```
+
+> If `camelot` pulled in `playa-pdf` with its mypyc runtime, add it to the build
+> with the `--add-binary` flag (as CI does, see `.github/workflows/build.yml`),
+> otherwise the frozen sidecar fails PDF recognition with
+> `ModuleNotFoundError: …__mypyc`.
 
 The app then finds the sidecar next to itself and can run from any directory.
 
@@ -166,24 +150,9 @@ cd konkurent_app
 flutter analyze                            # static analysis
 flutter test                               # unit tests (sidecar tests need ../.venv)
 flutter test integration_test -d linux     # UI tests (open a window)
-```
 
----
-
-## Legacy Python application
-
-The old GUI is kept for compatibility and is no longer developed.
-
-```bash
-.venv/bin/python3 gui.py                     # graphical interface
-.venv/bin/python3 recog.py /path/to/folder   # CLI: process a folder of PDFs
-```
-
-Portable builds (need `.venv` and Ghostscript on the target machine):
-
-```bash
-./build_portable.sh          # Linux → dist/конкурент/конкурент
-cmd /c build_portable.bat    # Windows → dist\kongkurent\kongkurent.exe
+# headless engine run over a folder of PDFs → конкурент <folder>.xlsx
+.venv/bin/python3 recog.py /path/to/folder
 ```
 
 ---
@@ -197,7 +166,6 @@ cmd /c build_portable.bat    # Windows → dist\kongkurent\kongkurent.exe
 | `config.json` | Single source of truth for the output table layout |
 | `sidecar.py` | Flutter ↔ Python bridge (recognize / export / import) |
 | `konkurent_app/` | Flutter app (Riverpod + Material 3) |
-| `gui.py` | Legacy Tkinter interface |
 
 Data flow:
 
@@ -213,11 +181,10 @@ invoice (pdf/xlsx/docx) → camelot / pandas → column normalization
 
 ## CI and releases
 
-- Pushing to `main` builds the portable apps and the Flutter app as GitHub Actions
-  artifacts (**no** release published).
-- A `v*` tag publishes a GitHub Release with archives:
-  `konkurent-linux.zip`, `konkurent-windows.zip` (legacy) and
-  `konkurent-app-linux.zip`, `konkurent-app-windows.zip` (Flutter).
+- Pushing to `main` builds the Flutter app (Linux + Windows, sidecar bundled) as
+  GitHub Actions artifacts (**no** release published).
+- A `v*` tag publishes a GitHub Release with the
+  `konkurent-app-linux.zip` and `konkurent-app-windows.zip` archives.
 
 ```bash
 git tag v1.1.0 && git push origin v1.1.0

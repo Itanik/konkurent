@@ -1,29 +1,11 @@
 # Конкурентная таблица
 
 Инструмент для отдела закупок: собирает коммерческие предложения поставщиков и
-формирует единую конкурентную таблицу для сравнения. Основное приложение —
-интерактивный редактор **KonkurentApp** (Flutter Desktop), работающий поверх
-общего с Python движком распознавания.
+формирует единую конкурентную таблицу для сравнения. Приложение — интерактивный
+редактор **KonkurentApp** (Flutter Desktop), работающий поверх Python-движка
+распознавания (`recog.py`, `normalizer.py`, `config.json`).
 
 **Русский** | [English](README.en.md)
-
----
-
-## Два приложения
-
-Проект содержит два фронтенда на одном движке:
-
-| | **KonkurentApp** (рекомендуется) | Python-GUI (устаревший) |
-|---|---|---|
-| Интерфейс | Flutter Desktop, Material 3 | Tkinter + ttk |
-| Платформы | Windows, Linux | Windows, Linux |
-| Назначение | Интерактивный редактор таблицы | Генератор xlsx одним прогоном |
-| Редактирование ячеек | да | нет |
-| Перестановка строк/блоков | да (drag&drop) | нет |
-| Сортировка по сумме | да | нет |
-| Статус | развивается | поддержка без развития |
-
-Движок распознавания (`recog.py`, `normalizer.py`, `config.json`) общий для обоих.
 
 ---
 
@@ -41,10 +23,6 @@
 - Автосохранение сессии между запусками.
 - Вычисляемые значения (цена за единицу, итоги) не хранятся константами, а
   считаются на лету и экспортируются формулами Excel.
-
-## Скриншоты
-
-_Место для скриншотов приложения._
 
 ---
 
@@ -99,6 +77,10 @@ flutter build windows --release    # → build/windows/x64/runner/Release/
 # Linux: dist/sidecar → рядом с bundle/konkurent_app
 # Windows: dist\sidecar.exe → рядом с Release\konkurent_app.exe
 ```
+
+> Если `camelot` подтянул `playa-pdf` с mypyc-рантаймом, добавьте его в сборку
+> флагом `--add-binary` (как в CI, `.github/workflows/build.yml`), иначе frozen
+> sidecar упадёт на распознавании PDF с `ModuleNotFoundError: …__mypyc`.
 
 После этого приложение находит sidecar рядом с собой и может запускаться из любой
 директории.
@@ -169,24 +151,9 @@ cd konkurent_app
 flutter analyze                            # статический анализ
 flutter test                               # unit-тесты (sidecar-тесты требуют ../.venv)
 flutter test integration_test -d linux     # UI-тесты (открывают окно)
-```
 
----
-
-## Устаревшее Python-приложение
-
-Старый GUI сохранён для совместимости и не развивается.
-
-```bash
-.venv/bin/python3 gui.py                     # графический интерфейс
-.venv/bin/python3 recog.py /путь/к/папке     # CLI: обработать папку с PDF
-```
-
-Портативные сборки (требуют `.venv` и Ghostscript на целевой машине):
-
-```bash
-./build_portable.sh          # Linux → dist/конкурент/конкурент
-cmd /c build_portable.bat    # Windows → dist\kongkurent\kongkurent.exe
+# headless-прогон движка по папке с PDF → конкурент <папка>.xlsx
+.venv/bin/python3 recog.py /путь/к/папке
 ```
 
 ---
@@ -200,7 +167,6 @@ cmd /c build_portable.bat    # Windows → dist\kongkurent\kongkurent.exe
 | `config.json` | Единый источник структуры выходной таблицы |
 | `sidecar.py` | Мост Flutter ↔ Python (recognize / export / import) |
 | `konkurent_app/` | Flutter-приложение (Riverpod + Material 3) |
-| `gui.py` | Устаревший Tkinter-интерфейс |
 
 Поток данных:
 
@@ -216,11 +182,10 @@ cmd /c build_portable.bat    # Windows → dist\kongkurent\kongkurent.exe
 
 ## CI и релизы
 
-- Пуш в `main` собирает портативные сборки и Flutter-приложение как артефакты
-  GitHub Actions (**без** публикации релиза).
-- Тег `v*` публикует GitHub Release с архивами:
-  `konkurent-linux.zip`, `konkurent-windows.zip` (legacy) и
-  `konkurent-app-linux.zip`, `konkurent-app-windows.zip` (Flutter).
+- Пуш в `main` собирает Flutter-приложение (Linux + Windows, со встроенным
+  sidecar) как артефакты GitHub Actions (**без** публикации релиза).
+- Тег `v*` публикует GitHub Release с архивами
+  `konkurent-app-linux.zip` и `konkurent-app-windows.zip`.
 
 ```bash
 git tag v1.1.0 && git push origin v1.1.0

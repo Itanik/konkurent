@@ -32,18 +32,24 @@ lib/
 ├── models/app_state.dart         AppState, SupplierBlock, Offer, RequestItem, SupplierMeta
 ├── providers/
 │   ├── app_state_provider.dart   Notifier со всеми мутациями таблицы
-│   └── services.dart             fileEngineProvider, storageServiceProvider
+│   ├── session_provider.dart     cleanSignatureProvider, isDirtyProvider
+│   ├── services.dart             fileEngineProvider, storageServiceProvider
+│   └── zoom_provider.dart        zoomProvider, tableMetricsProvider
 ├── services/
 │   ├── python_bridge.dart        FileEngine + PythonBridge (запуск sidecar)
 │   └── storage_service.dart      StorageService / FileStorageService / InMemoryStorageService
+├── utils/
+│   ├── format.dart               форматирование и парсинг чисел
+│   └── request_items_parse.dart  разбор вставленного списка позиций
 └── ui/
     ├── app.dart                  AppShell: автосохранение, drag&drop, open/export
     ├── app_toolbar.dart          AppBar: имя заявки + действия
     ├── constants.dart            размеры сетки, мета-строки
-    ├── utils/format.dart         форматирование и парсинг чисел
-    ├── utils/request_items_parse.dart  разбор вставленного списка позиций
-    ├── comparison_table/         таблица (fixed_panel, supplier_column, offer_row…)
-    └── dialogs/                  диалог открытия «своей» сессии
+    ├── zoom_scope.dart           применение масштаба к дереву виджетов
+    ├── comparison_table/         таблица: comparison_table, fixed_panel,
+    │                             supplier_column, offer_row, editable_cell,
+    │                             grid_box, drag_types
+    └── dialogs/                  new_session_dialog, session_confirm_dialog
 ```
 
 ---
@@ -111,11 +117,13 @@ flutter build windows --release
 ## Ограничения
 
 - Для распознавания PDF нужен **Ghostscript** в `PATH` (`gs` / `gswin64c`) —
-  иначе падает lattice-режим camelot.
+  иначе падает lattice-режим camelot (sidecar добавит подсказку к ошибке
+  распознавания).
 - DOCX-распознавание требует `python-docx` (в `requirements.txt`); без него
   sidecar возвращает понятную ошибку.
-- Flutter-приложение пока **не в CI** как релиз; в `.github/workflows/build.yml`
-  добавлена сборочная джоба (analyze + test + build, sidecar кладётся в бандл).
+- `.github/workflows/build.yml` собирает приложение в CI (analyze + test +
+  build, sidecar кладётся в бандл); тег `v*` публикует релиз с архивами
+  `konkurent-app-*.zip`.
 
 ---
 

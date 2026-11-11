@@ -1,17 +1,17 @@
 # AGENTS.md
 
-Two frontends share one recognition engine:
+One Flutter frontend on top of one Python recognition engine:
 
-- **Legacy desktop app** — Python + tkinter (`gui.py`), Russian UI, extracts line
-  items from supplier PDF invoices and builds a side-by-side comparison `.xlsx`.
 - **KonkurentApp** — Flutter Desktop (Windows + Linux) in `konkurent_app/`, an
-  Excel-like editor for the same tables. Reads/writes xlsx and drives the same
-  Python engine through `sidecar.py` (subprocess + JSON). Full design doc:
+  Excel-like editor that extracts line items from supplier invoices and builds a
+  side-by-side comparison `.xlsx`. Reads/writes xlsx and drives the Python
+  engine through `sidecar.py` (subprocess + JSON). Full design doc:
   `konkurent_app/SPEC.md`.
 
-The legacy app is three flat files with no package or test suite. The Flutter app
-has a real test suite. When in doubt about the data model, read
-`konkurent_app/SPEC.md`.
+The Python engine (`recog.py`, `normalizer.py`, `config.json`) has no package,
+lint, or test suite of its own; the Flutter app has a real test suite and its
+`sidecar_roundtrip_test` is the engine's regression harness. When in doubt about
+the data model, read `konkurent_app/SPEC.md`.
 
 ## Commands
 
@@ -32,30 +32,26 @@ flutter build windows --release
 installed; Android/Chrome doctor failures are irrelevant (targets are
 Windows + Linux).
 
-### Legacy Python app
+### Python engine
 
-There is no lint, no typecheck, no formatter, and no test runner. Verification is manual.
+No lint, no typecheck, no formatter, and no test runner of its own (the Dart
+`sidecar_roundtrip_test` covers it end-to-end). Verification is manual.
 
 ```bash
-# setup (venv must be created before the build scripts will work)
+# setup (the venv is also what the Flutter sidecar tests expect at ../.venv)
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-# run
-.venv/bin/python3 gui.py
-.venv/bin/python3 recog.py <folder-with-pdfs>     # CLI, headless
+# headless CLI over a folder of PDFs
+.venv/bin/python3 recog.py <folder-with-pdfs>
 
-# the only automated checks that exist
+# the only fast automated checks that exist
 .venv/bin/python3 -c "import ast; ast.parse(open('recog.py', encoding='utf-8').read())"
-.venv/bin/python3 -c "import recog; print('OK')"
+.venv/bin/python3 -c "import recog; import sidecar; print('OK')"
 
-# portable builds (both install pyinstaller themselves, both require .venv)
-./build_portable.sh          # -> dist/конкурент/конкурент
-cmd /c build_portable.bat    # -> dist\kongkurent\kongkurent.exe
+# frozen sidecar for a standalone Flutter bundle (see README for details)
+.venv/bin/pip install pyinstaller
+.venv/bin/pyinstaller --onefile sidecar.py --add-data "config.json:."
 ```
-
-Output paths differ per platform *and* per script: the `.sh` cleans/builds
-`dist/конкурент` + `конкурент.spec`, the `.bat` builds `dist\kongkurent` +
-`kongkurent.spec`. Don't assume one canonical dist name.
 
 ## sidecar.py — Flutter ↔ Python bridge
 
@@ -81,26 +77,24 @@ stdout elsewhere).
 
 ## Verification workflow
 
-- `example_data/` is gitignored — it is your local PDF fixture folder, never committed.
-  The only end-to-end check is `.venv/bin/python3 recog.py example_data` and opening
-  the produced `конкурент <folder>.xlsx`. Everything else is a human clicking
-  through the GUI.
+- `example_data/` is gitignored — it is your local fixture folder (PDFs to feed
+  `recog.py`), never committed. The engine end-to-end check is
+  `.venv/bin/python3 recog.py example_data` plus opening the produced
+  `конкурент <folder>.xlsx`. The Flutter side is covered by `flutter test`
+  (incl. `sidecar_roundtrip_test`) and `integration_test` (opens a window).
 - `scripts`-style checks used by the past refactor plans live in `.opencode/plans/`
   (`PLAN*.md`) — those files document the step-by-step branch/substep/control-point
   convention the maintainer follows, including the exact verification commands.
 - Releases: `git tag v1.0.0 && git push origin v1.0.0` → `.github/workflows/build.yml`
-  builds Linux+Windows, zips them, and publishes a GitHub Release with auto notes.
-  Pushing to `main` alone only produces artifacts, no release.
+  builds the Flutter app for Linux+Windows (sidecar bundled), zips it, and publishes
+  a GitHub Release with auto notes. Pushing to `main` alone only produces artifacts,
+  no release.
 - Commits follow conventional commits (`feat:`, `fix:`, `docs:`), branches `feat/*`,
   `fix/*`, merged back into `main` and deleted.
 
 ## Architecture
 
 ```
-gui.py     tkinter + ttk (theme "clam") + tkinterdnd2. Two entry paths:
-             "Выбор папки" tab -> output next to the input folder
-             "Drag && Drop" tab -> user-specified output path
-           Runs the whole pipeline in a worker thread.
 recog.py   process_pdf_file()  camelot lattice -> stream fallback -> tuple (df, orig_headers, bez_nds)
            fill_template()     config.json -> openpyxl workbook + all row/merge bookkeeping
 normalizer.py  picks the best camelot table, scores/finds the header row, maps
@@ -108,15 +102,17 @@ normalizer.py  picks the best camelot table, scores/finds the header row, maps
 config.json    single source of truth for the output table layout
 sidecar.py  argparse CLI wrapping the above for Flutter (recognize/export/import).
            `import camelot` is lazy so export/import work without the PDF stack.
+           Locates config.json via SCRIPT_DIR (its own directory).
 konkurent_app/  Flutter Desktop editor (Riverpod + Material 3).
            lib/services/python_bridge.dart runs sidecar.py and parses JSON.
            lib/services/storage_service.dart persists the session as JSON.
            Full model/UI contract: konkurent_app/SPEC.md
 ```
 
-`gui.py` imports `sys._MEIPASS` for `script_dir` so `config.json` is found inside a
-PyInstaller bundle. Anything new that reads a data file at runtime must do the same.
-`config.json` is baked in via `--add-data` — changing it requires a rebuild for portable builds.
+`sidecar.py` finds `config.json` next to itself (`SCRIPT_DIR`); in a frozen
+(PyInstaller) build `--add-data "config.json:."` puts it at the bundle root where
+`SCRIPT_DIR` resolves. Anything new that reads a data file at runtime must work
+through the same mechanism — and must be added to the `--add-data` flags in CI.
 
 ## Gotchas in `recog.py` (the file you'll break if you don't read this)
 
@@ -150,30 +146,8 @@ PyInstaller bundle. Anything new that reads a data file at runtime must do the s
 - **Supplier blocks are deduped by substring**: `filename in b["name"]`. This is how
   re-runs append new suppliers to the right instead of duplicating.
 - **`fill_template(..., meta_values=None)`** — optional `{filename: {label: value}}`
-  written into each block's meta rows; used by `sidecar.py` export. Blocks now also
-  carry `block["filename"]` so meta values can be matched. `gui.py` doesn't pass it.
-
-## Gotchas in `gui.py`
-
-- **Tab dispatch is done by comparing the Russian tab label** (`self._current_tab`
-  against `"Выбор папки"` / `"Позиции заявки"`) in `_update_run_button`,
-  `_start_processing`, and `_run_processing` — and the `else` branch silently means
-  the DnD tab. Renaming a tab label silently changes behaviour. The "Позиции заявки"
-  tab is a special hybrid: it prefers folder files, falls back to DnD files.
-- **stdout is the log transport.** The worker thread swaps in `QueueHandler`, so every
-  `print` in `recog.py` lands in the GUI log box. Completion is signalled with the
-  `__DONE__` / `__DONE__Ошибка: ` sentinel strings — do not emit user-visible text
-  beginning with `__DONE__`.
-- **The entry placeholder is real text.** `_setup_placeholder` inserts the filename
-  into an entry bound to `name_var`, so `_collect_selected` reports a "custom supplier
-  name" equal to the filename for every checked file unless the user overtypes it.
-  Consequence: `block_names` is effectively never empty, so the hidden original-filename
-  row is inserted on nearly every run, not only when names are customized.
-- `output_dir` defaults to `<app_dir>/output` and is created via `makedirs` at run time.
-- Clipboard support is hand-rolled per widget (`_add_clipboard_bindings` /
-  `_create_entry`) plus a `bind_class` right-click menu, because `tkinterdnd2` and
-  `CustomTkinter` historically broke clipboard behaviour. Use `_create_entry`, not a
-  bare `tk.Entry`, or you silently lose copy/paste and the context menu.
+  written into each block's meta rows; used by `sidecar.py` export. Blocks also
+  carry `block["filename"]` so meta values can be matched.
 
 ## Gotchas in the Flutter app (`konkurent_app/`)
 
@@ -203,9 +177,9 @@ PyInstaller bundle. Anything new that reads a data file at runtime must do the s
   in `playa-pdf`, which ships a hash-named extension at the *root* of
   site-packages (`<hash>__mypyc.cpython-*.so` / `.pyd`). PyInstaller does not
   discover it on its own, so a frozen sidecar fails PDF recognition with
-  `ModuleNotFoundError: No module named '<hash>_mypyc'`. Both `build_portable.*`
-  and the CI sidecar step add it explicitly with
-  `--add-binary "$(ls site-packages/*__mypyc*.<so|pyd>):."`. Keep that flag.
+  `ModuleNotFoundError: No module named '<hash>_mypyc'`. The CI sidecar step adds
+  it explicitly with `--add-binary "$(ls site-packages/*__mypyc*.<so|pyd>):."`;
+  a manual sidecar build needs the same flag. Keep it.
 - **Sidecar stdio is forced to UTF-8.** On Windows the default code page makes
   the Cyrillic in recog/camelot logs (stderr) invalid UTF-8, so a strict decoder
   in `PythonBridge` throws `FormatException: Missing extension byte` and masks a
@@ -215,12 +189,11 @@ PyInstaller bundle. Anything new that reads a data file at runtime must do the s
 
 ## Docs
 
-- Root `README.md` (Russian) and `README.en.md` (English) are current for both
-  frontends; `konkurent_app/README.md` / `README.en.md` are the developer docs.
-  The legacy "README is behind the code" drift has been fixed — keep it that way.
-- `customtkinter` is still listed in `requirements.txt` but is imported nowhere;
-  it is a dead dependency. The GUI is native `tkinter` + `ttk`.
+- Root `README.md` (Russian) and `README.en.md` (English) are current;
+  `konkurent_app/README.md` / `README.en.md` are the developer docs.
+  Keep them from drifting behind the code.
 - Runtime prerequisite that is easy to miss: **Ghostscript** must be on `PATH`
   (`gs` on Linux/macOS, `gswin64c` on Windows) or camelot's lattice mode fails.
-  `gui.py` only logs a warning at startup via `_check_gs`; `sidecar.py` surfaces
-  the failure as an error for the Flutter app.
+  `sidecar.py` does not fail early on this (stream mode works without it) —
+  when PDF recognition fails and Ghostscript is missing, it appends an
+  install hint to the error message (`_gs_hint`).

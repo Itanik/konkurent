@@ -1,9 +1,8 @@
 # SPEC — KonkurentApp
 
 Flutter Desktop приложение (Windows + Linux) для создания и редактирования
-конкурентных таблиц сравнения поставщиков. Заменяет существующий Python/tkinter
-инструмент (`gui.py`) и переиспользует его движок распознавания через
-Python-sidecar.
+конкурентных таблиц сравнения поставщиков. Работает поверх Python-движка
+распознавания (`recog.py` / `normalizer.py`) через Python-sidecar.
 
 ## Ключевые сценарии
 
@@ -280,7 +279,7 @@ Integration-тесты (`integration_test/app_test.dart`), запуск `-d linu
 ## Структура репозитория
 
 ```
-/                            ← корень (Python-приложение остаётся)
+/                            ← корень (Python-движок распознавания)
 ├── recog.py
 ├── normalizer.py
 ├── config.json
@@ -324,9 +323,11 @@ flutter build windows --release
 ## Ограничения
 
 - **Ghostscript** нужен для PDF (lattice-режим camelot). Пользователь
-  устанавливает вручную; sidecar проверяет наличие `gs` / `gswin64c` и возвращает
-  ошибку, если его нет. В CI ставится через `apt-get` / `choco` (см. `build.yml`).
-- **DOCX**: в текущем `normalizer.py` поддержки нет — нужен `python-docx` и логика
-  в `sidecar.py`.
+  устанавливает вручную. Sidecar не фейлит заранее (stream-режим работает и без
+  Ghostscript), но если распознавание PDF не удалось, а `gs` / `gswin64c` не
+  найдены в PATH, к ошибке добавляется подсказка установить Ghostscript. В CI
+  ставится через `apt-get` / `choco` (см. `build.yml`).
+- **DOCX** распознаётся в `sidecar.py` (`python-docx` из `requirements.txt`);
+  без пакета sidecar возвращает понятную ошибку.
 - **Версионирование формата** экспортируемого xlsx не реализовано: при изменении
   `config.json` старые файлы могут не открыться.
