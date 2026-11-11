@@ -34,7 +34,7 @@ class ExportOutcome {
 /// Абстракция над движком распознавания/экспорта. Реализуется PythonBridge,
 /// в тестах подменяется FakeFileEngine.
 abstract class FileEngine {
-  Future<RecognizeOutcome> recognize(String filePath);
+  Future<RecognizeOutcome> recognize(String filePath, {String? legalFormsPath});
 
   Future<ImportOutcome> importFile(String filePath);
 
@@ -159,9 +159,14 @@ class PythonBridge implements FileEngine {
   }
 
   @override
-  Future<RecognizeOutcome> recognize(String filePath) async {
+  Future<RecognizeOutcome> recognize(String filePath,
+      {String? legalFormsPath}) async {
     try {
-      final result = await _run(['--action=recognize', '--file=$filePath']);
+      final args = ['--action=recognize', '--file=$filePath'];
+      if (legalFormsPath != null) {
+        args.add('--legal-forms=$legalFormsPath');
+      }
+      final result = await _run(args);
       final json = _parseJson(result.stdout as String);
       if (json == null) {
         return RecognizeOutcome(
@@ -178,12 +183,14 @@ class PythonBridge implements FileEngine {
       final offers = ((json['offers'] as List?) ?? [])
           .map((e) => Offer.fromJson(e as Map<String, dynamic>))
           .toList();
+      final inn = (json['inn'] as String?)?.trim();
       return RecognizeOutcome(
         ok: true,
         supplier: SupplierBlock(
           id: newId(),
           displayName: (json['supplierName'] as String?) ?? '',
           sourceFileName: json['sourceFileName'] as String?,
+          inn: inn == null || inn.isEmpty ? null : inn,
           offers: offers.isEmpty ? [Offer.empty()] : offers,
         ),
       );

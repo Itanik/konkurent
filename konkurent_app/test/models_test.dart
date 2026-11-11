@@ -3,20 +3,80 @@ import 'package:konkurent_app/models/app_state.dart';
 
 void main() {
   group('Offer', () {
-    test('pricePerUnit вычисляется, не хранится', () {
+    test('цена вычисляется из суммы, не хранится (driver=sum)', () {
       const offer = Offer(id: 'o1', qty: 4, sumWithVat: 100);
-      expect(offer.pricePerUnit, 25);
+      expect(offer.displayPrice(false), 25);
     });
 
-    test('pricePerUnit null при нулевом количестве или отсутствии суммы', () {
-      expect(const Offer(id: 'o1', qty: 0, sumWithVat: 100).pricePerUnit, isNull);
-      expect(const Offer(id: 'o1', qty: 4).pricePerUnit, isNull);
-      expect(const Offer(id: 'o1', sumWithVat: 100).pricePerUnit, isNull);
+    test('цена null при нулевом количестве или отсутствии суммы', () {
+      expect(const Offer(id: 'o1', qty: 0, sumWithVat: 100).displayPrice(false), isNull);
+      expect(const Offer(id: 'o1', qty: 4).displayPrice(false), isNull);
+      expect(const Offer(id: 'o1', sumWithVat: 100).displayPrice(false), isNull);
     });
 
     test('copyWith clearQty обнуляет значение', () {
       const offer = Offer(id: 'o1', qty: 4);
       expect(offer.copyWith(clearQty: true).qty, isNull);
+    });
+
+    test('правка суммы пересчитывает сумму без НДС и сбрасывает цену', () {
+      const offer = Offer(id: 'o1', qty: 4, priceWithVat: 25);
+      final edited = offer.withSumInput(122, withoutVat: false, vat: 0.22);
+      expect(edited.priceDriver, PriceDriver.sum);
+      expect(edited.sumWithVat, 122);
+      expect(edited.sumWithoutVat, closeTo(100, 1e-9));
+      expect(edited.priceWithVat, isNull);
+      // цена вычисляется из суммы
+      expect(edited.displayPrice(false), closeTo(30.5, 1e-9));
+    });
+
+    test('правка цены переключает водителя, сумма вычисляется', () {
+      const offer = Offer(id: 'o1', qty: 4, sumWithVat: 100);
+      final edited = offer.withPriceInput(30, withoutVat: false);
+      expect(edited.priceDriver, PriceDriver.price);
+      expect(edited.priceWithVat, 30);
+      expect(edited.sumWithVat, isNull);
+      expect(edited.displaySum(false), closeTo(120, 1e-9));
+      expect(edited.displayPrice(false), 30);
+    });
+
+    test('смена количества пересчитывает производную величину', () {
+      final offer = Offer(id: 'o1', qty: 4, sumWithVat: 100)
+          .withPriceInput(30, withoutVat: false);
+      final grown = offer.copyWith(qty: 10);
+      expect(grown.displaySum(false), closeTo(300, 1e-9));
+
+      const sumOffer = Offer(id: 'o2', qty: 4, sumWithVat: 100);
+      expect(sumOffer.copyWith(qty: 10).displayPrice(false), 10);
+    });
+
+    test('поставщик без НДС: сумма без НДС первична', () {
+      const offer = Offer(id: 'o1', qty: 4);
+      final edited = offer.withSumInput(100, withoutVat: true, vat: 0.22);
+      expect(edited.sumWithoutVat, 100);
+      expect(edited.sumWithVat, isNull);
+      expect(edited.displaySum(true), 100);
+    });
+
+    test('правка скрытой колонки: сумма с НДС пересчитывается', () {
+      const offer = Offer(id: 'o1', qty: 4);
+      final edited = offer.withSumWithoutVatInput(100, vat: 0.22);
+      expect(edited.sumWithoutVat, 100);
+      expect(edited.sumWithVat, closeTo(122, 1e-9));
+      expect(edited.displaySum(false), closeTo(122, 1e-9));
+    });
+
+    test('скрытая колонка выводится из суммы с НДС, если не заполнена', () {
+      const offer = Offer(id: 'o1', qty: 4, sumWithVat: 122);
+      expect(offer.displaySumWithoutVat(false, 0.22), closeTo(100, 1e-9));
+      // распознанная сумма без НДС приоритетнее вычисленной
+      const both = Offer(id: 'o2', sumWithVat: 122, sumWithoutVat: 90);
+      expect(both.displaySumWithoutVat(false, 0.22), 90);
+    });
+
+    test('пустая строка учитывает цены', () {
+      expect(const Offer(id: 'o1').isEmpty, isTrue);
+      expect(const Offer(id: 'o1', priceWithVat: 5).isEmpty, isFalse);
     });
   });
 
@@ -46,6 +106,33 @@ void main() {
     test('hasAnySum false без сумм', () {
       final block = SupplierBlock(id: 's1', offers: const [Offer(id: 'o1')]);
       expect(block.hasAnySum, isFalse);
+    });
+
+    test('без НДС: total складывает суммы без НДС и вычисленные из цены', () {
+      final block = SupplierBlock(
+        id: 's1',
+        withoutVat: true,
+        offers: [
+          const Offer(id: 'o1', qty: 2, sumWithoutVat: 100),
+          Offer(id: 'o2', qty: 3)
+              .withPriceInput(10, withoutVat: true), // 10 * 3 = 30
+        ],
+      );
+      expect(block.total, closeTo(130, 1e-9));
+      expect(block.hasAnySum, isTrue);
+    });
+
+    test('ИНН сохраняется и чистится через copyWith', () {
+      final block = SupplierBlock(id: 's1', inn: '7707083893');
+      expect(block.inn, '7707083893');
+      expect(block.copyWith(clearInn: true).inn, isNull);
+    });
+
+    test('JSON round-trip ИНН и без НДС', () {
+      final block = SupplierBlock(id: 's1', inn: '1234567890', withoutVat: true);
+      final restored = SupplierBlock.fromJson(block.toJson());
+      expect(restored.inn, '1234567890');
+      expect(restored.withoutVat, isTrue);
     });
   });
 

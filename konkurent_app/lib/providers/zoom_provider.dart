@@ -5,9 +5,9 @@ import '../ui/constants.dart';
 /// Масштаб таблицы и шапки (1.0 = 100 %). Меняет реальные размеры ячеек,
 /// колонок и шрифта — при уменьшении в окно влезает больше предложений.
 class ZoomNotifier extends Notifier<double> {
-  static const double min = 0.75;
-  static const double max = 1.25;
-  static const double step = 0.05;
+  static const double min = 0.5;
+  static const double max = 2.0;
+  static const double step = 0.1;
 
   @override
   double build() => 1.0;

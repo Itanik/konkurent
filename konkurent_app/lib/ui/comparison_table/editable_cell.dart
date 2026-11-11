@@ -127,8 +127,9 @@ class _EditableCellState extends State<EditableCell> {
         alignment: _alignment,
         child: Text(
           widget.value.isEmpty ? (widget.hint ?? '') : widget.value,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+          // Перенос по словам без ограничения строк: высота строки
+          // подгоняется провайдером rowHeightsProvider.
+          softWrap: true,
           style: TextStyle(
             color: widget.value.isEmpty
                 ? Theme.of(context).hintColor

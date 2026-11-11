@@ -224,4 +224,95 @@ print(json.dumps({"data_start": data_start, "meta": meta, "total": total,
     expect((widths['E'] as num) <= 60, isTrue);
     expect((widths['I'] as num) <= 60, isTrue);
   });
+
+  test('экспорт введённой цены пишет сумму формулой «цена × кол-во»',
+      skip: skipReason, () async {
+    final bridge = PythonBridge.create();
+    final state = AppState(
+      requestName: 'Цены',
+      requestItems: const [RequestItem(id: 'r1', name: 'Болт', qty: '4')],
+      suppliers: [
+        SupplierBlock(
+          id: 's1',
+          displayName: 'Поставщик А',
+          sourceFileName: 'a.pdf',
+          offers: [
+            // Введённая сумма: цена остаётся формулой =сумма/кол-во.
+            const Offer(id: 'o1', itemName: 'Болт', qty: 4, unit: 'шт',
+                sumWithVat: 122),
+            // Введённая цена: пишется значением, сумма — формулой =цена*кол-во.
+            const Offer(id: 'o2', itemName: 'Гайка', qty: 10, unit: 'шт')
+                .withPriceInput(25, withoutVat: false),
+          ],
+        ),
+      ],
+    );
+
+    final tmp = Directory.systemTemp.createTempSync('konkurent_price');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final out = p.join(tmp.path, 'out.xlsx');
+
+    final export = await bridge.export(state, out);
+    expect(export.ok, isTrue, reason: export.error);
+
+    // Блок начинается с 4-й колонки: G = «Ц/ед», I = «Сумма, с НДС».
+    final script = '''
+import json
+import openpyxl
+wb = openpyxl.load_workbook(r"$out")
+ws = wb["Заявка"]
+print(json.dumps({
+  "price_sum_driver": ws.cell(4, 7).value,
+  "sum_sum_driver": ws.cell(4, 9).value,
+  "price_price_driver": ws.cell(5, 7).value,
+  "sum_price_driver": ws.cell(5, 9).value,
+}))
+''';
+    final res = await Process.run(python!, ['-c', script]);
+    expect(res.exitCode, 0, reason: res.stderr.toString());
+    final cells = jsonDecode((res.stdout as String).trim()) as Map<String, dynamic>;
+
+    expect(cells['price_sum_driver'], '=IFERROR(I4/E4,"")');
+    expect(cells['sum_sum_driver'], 122);
+    expect(cells['price_price_driver'], 25);
+    expect(cells['sum_price_driver'], '=IFERROR(G5*E5,"")');
+  });
+
+  test('recognize извлекает название по юрформе и ИНН из docx',
+      skip: skipReason, () async {
+    final tmp = Directory.systemTemp.createTempSync('konkurent_docx');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final invoice = p.join(tmp.path, 'invoice.docx');
+
+    final script = '''
+from docx import Document
+doc = Document()
+doc.add_paragraph("СЧЁТ № 5 от 01.11.2026")
+doc.add_paragraph("Общество с ограниченной ответственностью \\u00abРомашка Плюс\\u00bb")
+doc.add_paragraph("ИНН 7707083893 / КПП 770701001")
+table = doc.add_table(rows=3, cols=6)
+rows = [["\\u2116", "Товар", "Кол-во", "Ед.", "Цена", "Сумма"],
+        ["1", "Болт М8", "10", "шт", "50", "500"],
+        ["2", "Гайка М8", "20", "шт", "10", "200"]]
+for r, vals in enumerate(rows):
+    for c, v in enumerate(vals):
+        table.rows[r].cells[c].text = v
+doc.save(r"$invoice")
+''';
+    final gen = await Process.run(python!, ['-c', script]);
+    expect(gen.exitCode, 0, reason: gen.stderr.toString());
+
+    // Пользовательский список юрформ.
+    final forms = p.join(tmp.path, 'legal-forms.json');
+    File(forms).writeAsStringSync(
+        '["Общество с ограниченной ответственностью", "ООО", "ОАО", "АО", "ИП"]');
+
+    final bridge = PythonBridge.create();
+    final outcome = await bridge.recognize(invoice, legalFormsPath: forms);
+    expect(outcome.ok, isTrue, reason: outcome.error);
+    expect(outcome.supplier!.displayName, 'ООО «Ромашка Плюс»');
+    expect(outcome.supplier!.inn, '7707083893');
+    expect(outcome.supplier!.offers, hasLength(2));
+    expect(outcome.supplier!.offers.first.itemName, 'Болт М8');
+  });
 }

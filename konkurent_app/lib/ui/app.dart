@@ -12,6 +12,7 @@ import '../providers/app_state_provider.dart';
 import '../providers/services.dart';
 import '../providers/session_provider.dart';
 import '../providers/zoom_provider.dart';
+import '../services/app_config_service.dart';
 import '../services/python_bridge.dart';
 import 'app_toolbar.dart';
 import 'comparison_table/comparison_table.dart';
@@ -182,7 +183,11 @@ class _AppShellState extends ConsumerState<AppShell> {
       // foreign → распознаём как прайс-лист
     }
 
-    final rec = await _engine.recognize(path);
+    final rec = await _engine.recognize(
+      path,
+      legalFormsPath:
+          await ref.read(appConfigServiceProvider).legalFormsPath(),
+    );
     if (!mounted) return;
     if (rec.ok && rec.supplier != null) {
       ref.read(appStateProvider.notifier).addSupplier(rec.supplier!);

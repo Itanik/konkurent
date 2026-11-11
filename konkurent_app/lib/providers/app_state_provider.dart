@@ -41,6 +41,18 @@ class AppStateNotifier extends Notifier<AppState> {
     _updateSupplier(id, (s) => s.copyWith(displayName: name));
   }
 
+  void setSupplierInn(String id, String inn) {
+    _updateSupplier(
+      id,
+      (s) => s.copyWith(inn: inn.trim().isEmpty ? null : inn.trim()),
+    );
+  }
+
+  /// Режим «без НДС»: суммы поставщика считаются как суммы без НДС.
+  void setSupplierWithoutVat(String id, bool value) {
+    _updateSupplier(id, (s) => s.copyWith(withoutVat: value));
+  }
+
   /// [newIndex] — итоговый индекс, куда встаёт перемещаемый блок (drop на
   /// колонку с этим индексом).
   void reorderSuppliers(int oldIndex, int newIndex) {

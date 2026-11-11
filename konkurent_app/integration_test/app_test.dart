@@ -22,7 +22,8 @@ class FakeFileEngine implements FileEngine {
   ExportOutcome? exportResult;
 
   @override
-  Future<RecognizeOutcome> recognize(String filePath) async =>
+  Future<RecognizeOutcome> recognize(String filePath,
+      {String? legalFormsPath}) async =>
       recognizeResult ?? const RecognizeOutcome(ok: false, error: 'нет');
 
   @override
@@ -90,8 +91,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('toolbar.zoomIn')));
     await tester.pumpAndSettle();
-    expect(container.read(zoomProvider), closeTo(1.05, 1e-9));
-    expect(find.text('105 %'), findsOneWidget);
+    expect(container.read(zoomProvider), closeTo(1.1, 1e-9));
+    expect(find.text('110 %'), findsOneWidget);
 
     final after =
         tester.getSize(find.byKey(const ValueKey('offerRow.s1.0')));
@@ -188,7 +189,8 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    expect(find.text('12.50'), findsOneWidget);
+    // Цена теперь редактируемая ячейка — компактный формат без хвостовых нулей.
+    expect(find.text('12.5'), findsOneWidget);
   });
 
   testWidgets('сортировка по сумме переставляет блоки', (tester) async {
@@ -471,6 +473,126 @@ void main() {
     expect(offers[0].isEmpty, isTrue);
     expect(offers[1].id, 'o2');
     expect(offers[2].id, 'o1');
+  });
+
+  testWidgets('правка цены пересчитывает сумму', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: 'Болт', qty: 4)],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    await tapCell(tester, 'offer.o1.price');
+    await tester.enterText(
+        find.byKey(const ValueKey('offer.o1.price.field')), '30');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    final offer = container.read(appStateProvider).suppliers.first.offers.first;
+    expect(offer.priceDriver, PriceDriver.price);
+    expect(offer.priceWithVat, 30);
+    // Сумма вычисляется: 30 × 4.
+    expect(find.text('120'), findsOneWidget);
+  });
+
+  testWidgets('флажок «без НДС» переключает, какие суммы складываются',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    final offer =
+        const Offer(id: 'o1', itemName: 'Болт', qty: 4)
+            .withSumInput(100, withoutVat: true, vat: 0.22);
+    container.read(appStateProvider.notifier).addSupplier(
+          SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            withoutVat: true,
+            offers: [offer],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Итог по суммам без НДС.
+    expect(find.text('100.00'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('supplier.s1.withoutVat')));
+    await tester.pumpAndSettle();
+
+    final block = container.read(appStateProvider).suppliers.first;
+    expect(block.withoutVat, isFalse);
+    // Суммы с НДС нет — итог пуст (0).
+    expect(find.text('0.00'), findsOneWidget);
+  });
+
+  testWidgets('режим сумм прячет колонки предложений', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: 'Болт', qty: 4, sumWithVat: 100)],
+          ),
+        );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('offer.o1.item')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar.sumsOnly')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('offer.o1.item')), findsNothing);
+    // Мета и итог остаются редактируемыми.
+    expect(
+        find.byKey(const ValueKey('supplier.s1.meta.contract')), findsOneWidget);
+    expect(find.byKey(const ValueKey('supplier.s1.total')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('toolbar.sumsOnly')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('offer.o1.item')), findsOneWidget);
+  });
+
+  testWidgets('скрытая колонка «Сумма, без НДС» появляется по флагу',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              Offer(id: 'o1', itemName: 'Болт', qty: 4, sumWithVat: 122),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('offer.o1.sumWithoutVat')), findsNothing);
+
+    await tester.tap(
+        find.byKey(const ValueKey('toolbar.showSumWithoutVat')));
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(const ValueKey('offer.o1.sumWithoutVat')), findsOneWidget);
+
+    // Правка скрытой колонки пересчитывает сумму с НДС (100 → 122).
+    await tapCell(tester, 'offer.o1.sumWithoutVat');
+    await tester.enterText(
+        find.byKey(const ValueKey('offer.o1.sumWithoutVat.field')), '100');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    final offer = container.read(appStateProvider).suppliers.first.offers.first;
+    expect(offer.sumWithVat, closeTo(122, 1e-9));
   });
 }
 

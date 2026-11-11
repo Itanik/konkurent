@@ -16,15 +16,15 @@ void main() {
     expect(value(), 1.0);
   });
 
-  test('шаг 5 %', () {
+  test('шаг 10 %', () {
     notifier().zoomIn();
-    expect(value(), closeTo(1.05, 1e-9));
+    expect(value(), closeTo(1.1, 1e-9));
     notifier().zoomOut();
     notifier().zoomOut();
-    expect(value(), closeTo(0.95, 1e-9));
+    expect(value(), closeTo(0.9, 1e-9));
   });
 
-  test('ограничение диапазоном 75–125 %', () {
+  test('ограничение диапазоном 50–200 %', () {
     notifier().set(0.1);
     expect(value(), ZoomNotifier.min);
     notifier().set(5.0);

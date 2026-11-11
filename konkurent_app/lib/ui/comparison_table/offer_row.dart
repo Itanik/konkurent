@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
 import '../../providers/zoom_provider.dart';
+import '../../services/app_config_service.dart';
 import '../../utils/format.dart';
 import '../../utils/request_items_parse.dart';
+import '../../providers/view_preferences_provider.dart';
 import 'drag_types.dart';
 import 'editable_cell.dart';
 import 'grid_box.dart';
@@ -19,6 +21,8 @@ class OfferRow extends ConsumerWidget {
     required this.supplierId,
     required this.offer,
     required this.index,
+    required this.rowHeight,
+    required this.withoutVat,
     required this.onReorder,
   });
 
@@ -27,6 +31,13 @@ class OfferRow extends ConsumerWidget {
   /// null — пустая (запасная) строка.
   final Offer? offer;
   final int index;
+
+  /// Высота строки (автовысота из rowHeightsProvider).
+  final double rowHeight;
+
+  /// Режим поставщика «без НДС».
+  final bool withoutVat;
+
   final void Function(int fromIndex, int toIndex) onReorder;
 
   @override
@@ -34,6 +45,8 @@ class OfferRow extends ConsumerWidget {
     final current = offer;
     final notifier = ref.read(appStateProvider.notifier);
     final m = ref.watch(tableMetricsProvider);
+    final vat = ref.watch(appConfigProvider).value?.vatRate ?? 0.22;
+    final showSumWithoutVat = ref.watch(showSumWithoutVatProvider);
     final hasContent = current != null && !current.isEmpty;
     final keyBase = current != null
         ? 'offer.${current.id}'
@@ -44,7 +57,7 @@ class OfferRow extends ConsumerWidget {
       children: [
         GridBox(
           width: m.itemWidth,
-          height: m.dataRowHeight,
+          height: rowHeight,
           child: Row(
             children: [
               if (hasContent)
@@ -112,7 +125,7 @@ class OfferRow extends ConsumerWidget {
         ),
         GridBox(
           width: m.qtyWidth,
-          height: m.dataRowHeight,
+          height: rowHeight,
           child: EditableCell(
             testId: '$keyBase.qty',
             value: formatEditable(current?.qty),
@@ -130,7 +143,7 @@ class OfferRow extends ConsumerWidget {
         ),
         GridBox(
           width: m.unitWidth,
-          height: m.dataRowHeight,
+          height: rowHeight,
           child: EditableCell(
             testId: '$keyBase.unit',
             value: current?.unit ?? '',
@@ -144,22 +157,51 @@ class OfferRow extends ConsumerWidget {
         ),
         GridBox(
           width: m.priceWidth,
-          height: m.dataRowHeight,
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8 * m.scale),
-            child: Text(
-              formatNumber(current?.pricePerUnit),
-              key: ValueKey('$keyBase.price'),
-            ),
+          height: rowHeight,
+          child: EditableCell(
+            testId: '$keyBase.price',
+            value: formatEditable(current?.displayPrice(withoutVat)),
+            numeric: true,
+            textAlign: TextAlign.right,
+            hint: 'цена',
+            onChanged: (v) {
+              final n = parseNumber(v);
+              notifier.setOfferAt(
+                supplierId,
+                index,
+                (o) => o.withPriceInput(n, withoutVat: withoutVat),
+              );
+            },
           ),
         ),
+        if (showSumWithoutVat)
+          GridBox(
+            width: m.sumWithoutVatWidth,
+            height: rowHeight,
+            child: EditableCell(
+              testId: '$keyBase.sumWithoutVat',
+              value: formatEditable(current?.displaySumWithoutVat(
+                  withoutVat, vat)),
+              numeric: true,
+              textAlign: TextAlign.right,
+              onChanged: (v) {
+                final n = parseNumber(v);
+                notifier.setOfferAt(
+                  supplierId,
+                  index,
+                  (o) => withoutVat
+                      ? o.withSumInput(n, withoutVat: true, vat: vat)
+                      : o.withSumWithoutVatInput(n, vat: vat),
+                );
+              },
+            ),
+          ),
         GridBox(
           width: m.sumWidth,
-          height: m.dataRowHeight,
+          height: rowHeight,
           child: EditableCell(
             testId: '$keyBase.sum',
-            value: formatEditable(current?.sumWithVat),
+            value: formatEditable(current?.displaySum(withoutVat)),
             numeric: true,
             textAlign: TextAlign.right,
             onChanged: (v) {
@@ -167,7 +209,7 @@ class OfferRow extends ConsumerWidget {
               notifier.setOfferAt(
                 supplierId,
                 index,
-                (o) => o.copyWith(sumWithVat: n, clearSumWithVat: n == null),
+                (o) => o.withSumInput(n, withoutVat: withoutVat, vat: vat),
               );
             },
           ),

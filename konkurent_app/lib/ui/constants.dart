@@ -10,7 +10,7 @@ class TableMetrics {
 
   final double scale;
 
-  double get headerRowHeight => 56 * scale;
+  double get headerRowHeight => 64 * scale;
   double get subHeaderHeight => 36 * scale;
   double get dataRowHeight => 44 * scale;
   double get metaRowHeight => 40 * scale;
@@ -25,9 +25,18 @@ class TableMetrics {
   double get qtyWidth => 80 * scale;
   double get unitWidth => 72 * scale;
   double get priceWidth => 110 * scale;
+  double get sumWithoutVatWidth => 110 * scale;
   double get sumWidth => 120 * scale;
-  double get supplierWidth =>
-      itemWidth + qtyWidth + unitWidth + priceWidth + sumWidth;
+
+  /// Полная ширина колонки поставщика; [withSumWithoutVat] — с видимой
+  /// скрытой колонкой «Сумма, без НДС».
+  double supplierWidth({bool withSumWithoutVat = false}) =>
+      itemWidth +
+      qtyWidth +
+      unitWidth +
+      priceWidth +
+      (withSumWithoutVat ? sumWithoutVatWidth : 0) +
+      sumWidth;
 
   EdgeInsets get cellPadding =>
       EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale);

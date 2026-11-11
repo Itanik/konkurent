@@ -4,6 +4,12 @@ const _uuid = Uuid();
 
 String newId() => _uuid.v4();
 
+/// Что является источником истины для строки: введённая сумма (`sum`) или
+/// введённая цена (`price`). «Последняя правка выигрывает»: правка суммы
+/// переключает водителя на сумму, правка цены — на цену. Вторая величина
+/// всегда вычисляется на лету и не хранится.
+enum PriceDriver { sum, price }
+
 class Offer {
   const Offer({
     required this.id,
@@ -12,6 +18,9 @@ class Offer {
     this.unit = '',
     this.sumWithVat,
     this.sumWithoutVat,
+    this.priceWithVat,
+    this.priceWithoutVat,
+    this.priceDriver = PriceDriver.sum,
   });
 
   final String id;
@@ -21,6 +30,11 @@ class Offer {
   final double? sumWithVat;
   final double? sumWithoutVat;
 
+  /// Хранится только при [PriceDriver.price] — сумма тогда вычисляется.
+  final double? priceWithVat;
+  final double? priceWithoutVat;
+  final PriceDriver priceDriver;
+
   factory Offer.empty() => Offer(id: newId());
 
   /// Полностью пустая строка (нет ни одного заполненного поля).
@@ -29,14 +43,120 @@ class Offer {
       qty == null &&
       unit.isEmpty &&
       sumWithVat == null &&
-      sumWithoutVat == null;
+      sumWithoutVat == null &&
+      priceWithVat == null &&
+      priceWithoutVat == null;
 
-  /// Вычисляемое значение — никогда не хранится и не экспортируется как число.
-  double? get pricePerUnit {
-    final q = qty;
+  /// Основная сумма строки с учётом режима поставщика «без НДС».
+  /// При [PriceDriver.price] вычисляется из цены.
+  double? displaySum(bool withoutVat) {
+    if (priceDriver == PriceDriver.price) {
+      final q = qty;
+      final pr = withoutVat ? priceWithoutVat : priceWithVat;
+      if (pr == null || q == null || q == 0) return null;
+      return pr * q;
+    }
+    return withoutVat ? sumWithoutVat : sumWithVat;
+  }
+
+  /// Значение скрытой колонки «Сумма, без НДС».
+  double? displaySumWithoutVat(bool withoutVat, double vat) {
+    if (withoutVat) return displaySum(true);
+    if (priceDriver == PriceDriver.price) {
+      final q = qty;
+      final pr = priceWithoutVat ??
+          (priceWithVat != null ? priceWithVat! / (1 + vat) : null);
+      if (pr == null || q == null) return null;
+      return pr * q;
+    }
+    if (sumWithoutVat != null) return sumWithoutVat;
     final s = sumWithVat;
-    if (q == null || q == 0 || s == null) return null;
+    return s == null ? null : s / (1 + vat);
+  }
+
+  /// Цена за единицу — вычисляемая, никогда не хранится при [PriceDriver.sum].
+  double? displayPrice(bool withoutVat) {
+    if (priceDriver == PriceDriver.price) {
+      return withoutVat ? priceWithoutVat : priceWithVat;
+    }
+    final s = displaySum(withoutVat);
+    final q = qty;
+    if (s == null || q == null || q == 0) return null;
     return s / q;
+  }
+
+  /// Правка основной суммы. Переключает водителя на сумму, цена сбрасывается
+  /// (вычисляется на лету). Для поставщика с НДС сумма без НДС выводится
+  /// через [vat].
+  Offer withSumInput(double? value, {required bool withoutVat, required double vat}) {
+    if (value == null) {
+      return copyWith(
+        clearSumWithVat: true,
+        clearSumWithoutVat: true,
+        clearPriceWithVat: true,
+        clearPriceWithoutVat: true,
+        priceDriver: PriceDriver.sum,
+      );
+    }
+    if (withoutVat) {
+      return copyWith(
+        sumWithoutVat: value,
+        clearSumWithVat: true,
+        clearPriceWithVat: true,
+        clearPriceWithoutVat: true,
+        priceDriver: PriceDriver.sum,
+      );
+    }
+    return copyWith(
+      sumWithVat: value,
+      sumWithoutVat: value / (1 + vat),
+      clearPriceWithVat: true,
+      clearPriceWithoutVat: true,
+      priceDriver: PriceDriver.sum,
+    );
+  }
+
+  /// Правка скрытой колонки «Сумма, без НДС» (только у поставщика с НДС):
+  /// сумма с НДС становится первичной и пересчитывается из введённой.
+  Offer withSumWithoutVatInput(double? value, {required double vat}) {
+    if (value == null) {
+      return copyWith(clearSumWithoutVat: true);
+    }
+    return copyWith(
+      sumWithoutVat: value,
+      sumWithVat: value * (1 + vat),
+      clearPriceWithVat: true,
+      clearPriceWithoutVat: true,
+      priceDriver: PriceDriver.sum,
+    );
+  }
+
+  /// Правка цены за единицу. Переключает водителя на цену, суммы сбрасываются
+  /// (вычисляются на лету).
+  Offer withPriceInput(double? value, {required bool withoutVat}) {
+    if (value == null) {
+      return copyWith(
+        clearPriceWithVat: true,
+        clearPriceWithoutVat: true,
+        priceDriver: PriceDriver.sum,
+      );
+    }
+    if (withoutVat) {
+      return copyWith(
+        priceWithoutVat: value,
+        clearPriceWithVat: true,
+        clearSumWithVat: true,
+        clearSumWithoutVat: true,
+        priceDriver: PriceDriver.price,
+      );
+    }
+    return copyWith(
+      priceWithVat: value,
+      clearPriceWithoutVat: true,
+      clearSumWithVat: true,
+      clearSumWithoutVat: true,
+      priceDriver: PriceDriver.price,
+    );
   }
 
   Offer copyWith({
@@ -48,6 +168,11 @@ class Offer {
     bool clearSumWithVat = false,
     double? sumWithoutVat,
     bool clearSumWithoutVat = false,
+    double? priceWithVat,
+    bool clearPriceWithVat = false,
+    double? priceWithoutVat,
+    bool clearPriceWithoutVat = false,
+    PriceDriver? priceDriver,
   }) {
     return Offer(
       id: id,
@@ -57,6 +182,12 @@ class Offer {
       sumWithVat: clearSumWithVat ? null : (sumWithVat ?? this.sumWithVat),
       sumWithoutVat:
           clearSumWithoutVat ? null : (sumWithoutVat ?? this.sumWithoutVat),
+      priceWithVat:
+          clearPriceWithVat ? null : (priceWithVat ?? this.priceWithVat),
+      priceWithoutVat: clearPriceWithoutVat
+          ? null
+          : (priceWithoutVat ?? this.priceWithoutVat),
+      priceDriver: priceDriver ?? this.priceDriver,
     );
   }
 
@@ -67,6 +198,9 @@ class Offer {
         'unit': unit,
         'sumWithVat': sumWithVat,
         'sumWithoutVat': sumWithoutVat,
+        'priceWithVat': priceWithVat,
+        'priceWithoutVat': priceWithoutVat,
+        'priceDriver': priceDriver == PriceDriver.price ? 'price' : 'sum',
       };
 
   factory Offer.fromJson(Map<String, dynamic> json) => Offer(
@@ -76,6 +210,11 @@ class Offer {
         unit: (json['unit'] as String?) ?? '',
         sumWithVat: _toDouble(json['sumWithVat']),
         sumWithoutVat: _toDouble(json['sumWithoutVat']),
+        priceWithVat: _toDouble(json['priceWithVat']),
+        priceWithoutVat: _toDouble(json['priceWithoutVat']),
+        priceDriver: json['priceDriver'] == 'price'
+            ? PriceDriver.price
+            : PriceDriver.sum,
       );
 }
 
@@ -146,6 +285,8 @@ class SupplierBlock {
     required this.id,
     this.displayName = '',
     this.sourceFileName,
+    this.inn,
+    this.withoutVat = false,
     this.meta = const SupplierMeta(),
     this.offers = const [],
   });
@@ -153,19 +294,27 @@ class SupplierBlock {
   final String id;
   final String displayName;
   final String? sourceFileName;
+
+  /// ИНН поставщика (распознанный из счёта или введённый вручную).
+  final String? inn;
+
+  /// Счёт без НДС: суммы считаются как суммы без НДС.
+  final bool withoutVat;
   final SupplierMeta meta;
   final List<Offer> offers;
 
-  /// Итог по поставщику — вычисляется, не хранится.
+  /// Итог по поставщику — вычисляется, не хранится. Для «без НДС» складываются
+  /// суммы без НДС (в т.ч. вычисленные из цены).
   double get total {
     var sum = 0.0;
     for (final o in offers) {
-      sum += o.sumWithVat ?? 0;
+      sum += o.displaySum(withoutVat) ?? 0;
     }
     return sum;
   }
 
-  bool get hasAnySum => offers.any((o) => o.sumWithVat != null);
+  bool get hasAnySum =>
+      offers.any((o) => o.displaySum(withoutVat) != null);
 
   factory SupplierBlock.empty({String displayName = ''}) => SupplierBlock(
         id: newId(),
@@ -176,6 +325,9 @@ class SupplierBlock {
   SupplierBlock copyWith({
     String? displayName,
     String? sourceFileName,
+    String? inn,
+    bool clearInn = false,
+    bool? withoutVat,
     SupplierMeta? meta,
     List<Offer>? offers,
   }) {
@@ -183,6 +335,8 @@ class SupplierBlock {
       id: id,
       displayName: displayName ?? this.displayName,
       sourceFileName: sourceFileName ?? this.sourceFileName,
+      inn: clearInn ? null : (inn ?? this.inn),
+      withoutVat: withoutVat ?? this.withoutVat,
       meta: meta ?? this.meta,
       offers: offers ?? this.offers,
     );
@@ -192,6 +346,8 @@ class SupplierBlock {
         'id': id,
         'displayName': displayName,
         'sourceFileName': sourceFileName,
+        'inn': inn,
+        'withoutVat': withoutVat,
         'meta': meta.toJson(),
         'offers': offers.map((o) => o.toJson()).toList(),
       };
@@ -200,6 +356,8 @@ class SupplierBlock {
         id: (json['id'] as String?) ?? newId(),
         displayName: (json['displayName'] as String?) ?? '',
         sourceFileName: json['sourceFileName'] as String?,
+        inn: json['inn'] as String?,
+        withoutVat: json['withoutVat'] as bool? ?? false,
         meta: SupplierMeta.fromJson(json['meta'] as Map<String, dynamic>?),
         offers: ((json['offers'] as List?) ?? [])
             .map((e) => Offer.fromJson(e as Map<String, dynamic>))

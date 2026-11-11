@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
+import '../../providers/view_preferences_provider.dart';
 import '../../providers/zoom_provider.dart';
 
 /// Верхняя панель: имя заявки и действия. Открытие/сохранение делегируются
@@ -28,6 +29,10 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(appStateProvider.notifier);
     final zoomNotifier = ref.read(zoomProvider.notifier);
+    final sumsOnly = ref.watch(sumsOnlyProvider);
+    final showSumWithoutVat = ref.watch(showSumWithoutVatProvider);
+    final sumsOnlyNotifier = ref.read(sumsOnlyProvider.notifier);
+    final hiddenColumnNotifier = ref.read(showSumWithoutVatProvider.notifier);
 
     return AppBar(
       toolbarHeight: kToolbarHeight * scale,
@@ -44,6 +49,24 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
           tooltip: 'Новая сессия',
           icon: const Icon(Icons.note_add_outlined),
           onPressed: onNewSession,
+        ),
+        IconButton(
+          key: const ValueKey('toolbar.sumsOnly'),
+          tooltip: 'Режим сумм — только итоги поставщиков',
+          icon: Icon(sumsOnly ? Icons.calculate : Icons.calculate_outlined),
+          isSelected: sumsOnly,
+          selectedIcon: const Icon(Icons.calculate),
+          onPressed: sumsOnlyNotifier.toggle,
+        ),
+        IconButton(
+          key: const ValueKey('toolbar.showSumWithoutVat'),
+          tooltip: 'Показать колонку «Сумма, без НДС»',
+          icon: Icon(showSumWithoutVat
+              ? Icons.receipt
+              : Icons.receipt_outlined),
+          isSelected: showSumWithoutVat,
+          selectedIcon: const Icon(Icons.receipt),
+          onPressed: hiddenColumnNotifier.toggle,
         ),
         IconButton(
           key: const ValueKey('toolbar.addSupplier'),

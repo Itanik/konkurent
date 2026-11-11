@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
 import '../../providers/zoom_provider.dart';
+import '../../providers/view_preferences_provider.dart';
 import '../../utils/format.dart';
 import '../constants.dart';
 import 'drag_types.dart';
 import 'editable_cell.dart';
 import 'grid_box.dart';
 import 'offer_row.dart';
+import 'row_heights.dart';
 
-/// Колонка одного поставщика: заголовок с drag-handle, подзаголовки,
-/// предложения (вертикальный reorder), мета и итог.
+/// Колонка одного поставщика: заголовок с drag-handle и чекбоксом «без НДС»,
+/// подзаголовки, предложения (вертикальный reorder), мета и итог.
+/// В режиме сумм остаются только заголовок, мета и итог (ширина = колонка сумм).
 class SupplierColumn extends ConsumerWidget {
   const SupplierColumn({
     super.key,
@@ -27,60 +31,140 @@ class SupplierColumn extends ConsumerWidget {
     final state = ref.watch(appStateProvider);
     final notifier = ref.read(appStateProvider.notifier);
     final m = ref.watch(tableMetricsProvider);
+    final heights = ref.watch(rowHeightsProvider);
+    final sumsOnly = ref.watch(sumsOnlyProvider);
+    final showSumWithoutVat = ref.watch(showSumWithoutVatProvider);
 
     final supplier = state.suppliers.firstWhere((s) => s.id == supplierId);
-    final maxRows = state.maxRows + 1; // + запасная пустая строка
+    final maxRows = heights.data.length;
     final headerStyle = Theme.of(context).textTheme.titleSmall;
+    final width = sumsOnly
+        ? m.sumWidth
+        : m.supplierWidth(withSumWithoutVat: showSumWithoutVat);
+
+    if (sumsOnly) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GridBox(
+            width: width,
+            height: m.headerRowHeight,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6 * m.scale),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  supplier.displayName.isEmpty
+                      ? 'Поставщик'
+                      : supplier.displayName,
+                  softWrap: true,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: headerStyle,
+                ),
+              ),
+            ),
+          ),
+          for (var j = 0; j < kMetaRows.length; j++)
+            GridBox(
+              width: width,
+              height: heights.meta[j],
+              child: EditableCell(
+                testId: 'supplier.$supplierId.meta.${kMetaRows[j].key}',
+                value: supplier.meta.value(kMetaRows[j].key),
+                textAlign: TextAlign.center,
+                onChanged: (v) =>
+                    notifier.setMeta(supplierId, kMetaRows[j].key, v),
+              ),
+            ),
+          _totalBox(context, m, width, supplier, headerStyle),
+        ],
+      );
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         GridBox(
-          width: m.supplierWidth,
+          width: width,
           height: m.headerRowHeight,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Row(
-            children: [
-              Draggable<SupplierDrag>(
-                data: SupplierDrag(supplierId),
-                feedback: Material(
-                  elevation: 4,
-                  child: Chip(label: Text(supplier.displayName.isEmpty
-                      ? 'Поставщик'
-                      : supplier.displayName)),
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 2 * m.scale),
+            child: Column(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Draggable<SupplierDrag>(
+                        data: SupplierDrag(supplierId),
+                        feedback: Material(
+                          elevation: 4,
+                          child: Chip(label: Text(supplier.displayName.isEmpty
+                              ? 'Поставщик'
+                              : supplier.displayName)),
+                        ),
+                        childWhenDragging: const Opacity(
+                          opacity: 0.3,
+                          child: Icon(Icons.drag_indicator),
+                        ),
+                        child: Padding(
+                          key: ValueKey('supplier.$supplierId.handle'),
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 4 * m.scale),
+                          child:
+                              Icon(Icons.drag_indicator, size: m.dragIconSize),
+                        ),
+                      ),
+                      Expanded(
+                        child: EditableCell(
+                          testId: 'supplier.$supplierId.name',
+                          hint: 'Имя поставщика',
+                          value: supplier.displayName,
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 2 * m.scale),
+                          onChanged: (v) =>
+                              notifier.renameSupplier(supplierId, v),
+                        ),
+                      ),
+                      IconButton(
+                        key: ValueKey('supplier.$supplierId.delete'),
+                        iconSize: m.actionIconSize,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(
+                          minWidth: m.tapTargetLarge,
+                          minHeight: m.tapTargetLarge,
+                        ),
+                        tooltip: 'Удалить поставщика',
+                        icon: const Icon(Icons.close),
+                        onPressed: () => notifier.removeSupplier(supplierId),
+                      ),
+                    ],
+                  ),
                 ),
-                childWhenDragging: const Opacity(
-                  opacity: 0.3,
-                  child: Icon(Icons.drag_indicator),
+                Row(
+                  children: [
+                    SizedBox(width: m.handleGap),
+                    SizedBox(
+                      width: 18 * m.scale,
+                      height: 18 * m.scale,
+                      child: Checkbox(
+                        key: ValueKey('supplier.$supplierId.withoutVat'),
+                        value: supplier.withoutVat,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: (v) =>
+                            notifier.setSupplierWithoutVat(supplierId, v ?? false),
+                      ),
+                    ),
+                    SizedBox(width: 4 * m.scale),
+                    Text('без НДС',
+                        style: Theme.of(context).textTheme.labelSmall),
+                  ],
                 ),
-                child: Padding(
-                  key: ValueKey('supplier.$supplierId.handle'),
-                  padding: EdgeInsets.symmetric(horizontal: 4 * m.scale),
-                  child: Icon(Icons.drag_indicator, size: m.dragIconSize),
-                ),
-              ),
-              Expanded(
-                child: EditableCell(
-                  testId: 'supplier.$supplierId.name',
-                  hint: 'Имя поставщика',
-                  value: supplier.displayName,
-                  padding: EdgeInsets.symmetric(horizontal: 2 * m.scale),
-                  onChanged: (v) => notifier.renameSupplier(supplierId, v),
-                ),
-              ),
-              IconButton(
-                key: ValueKey('supplier.$supplierId.delete'),
-                iconSize: m.actionIconSize,
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints(
-                  minWidth: m.tapTargetLarge,
-                  minHeight: m.tapTargetLarge,
-                ),
-                tooltip: 'Удалить поставщика',
-                icon: const Icon(Icons.close),
-                onPressed: () => notifier.removeSupplier(supplierId),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         Row(
@@ -90,6 +174,9 @@ class SupplierColumn extends ConsumerWidget {
             _subHeader(context, m, 'Кол-во', m.qtyWidth, TextAlign.center),
             _subHeader(context, m, 'Ед.', m.unitWidth, TextAlign.center),
             _subHeader(context, m, 'Ц/ед', m.priceWidth, TextAlign.center),
+            if (showSumWithoutVat)
+              _subHeader(context, m, 'Сумма б/НДС', m.sumWithoutVatWidth,
+                  TextAlign.right),
             _subHeader(context, m, 'Сумма', m.sumWidth, TextAlign.right),
           ],
         ),
@@ -98,6 +185,8 @@ class SupplierColumn extends ConsumerWidget {
             key: ValueKey('offerRow.$supplierId.$i'),
             supplierId: supplierId,
             index: i,
+            rowHeight: heights.data[i],
+            withoutVat: supplier.withoutVat,
             offer: i < supplier.offers.length ? supplier.offers[i] : null,
             onReorder: (fromIndex, toIndex) {
               final target = toIndex < supplier.offers.length
@@ -111,32 +200,42 @@ class SupplierColumn extends ConsumerWidget {
               }
             },
           ),
-        for (final meta in kMetaRows)
+        for (var j = 0; j < kMetaRows.length; j++)
           GridBox(
-            width: m.supplierWidth,
-            height: m.metaRowHeight,
+            width: width,
+            height: heights.meta[j],
             child: EditableCell(
-              testId: 'supplier.$supplierId.meta.${meta.key}',
-              value: supplier.meta.value(meta.key),
+              testId: 'supplier.$supplierId.meta.${kMetaRows[j].key}',
+              value: supplier.meta.value(kMetaRows[j].key),
               textAlign: TextAlign.center,
-              onChanged: (v) => notifier.setMeta(supplierId, meta.key, v),
+              onChanged: (v) => notifier.setMeta(supplierId, kMetaRows[j].key, v),
             ),
           ),
-        GridBox(
-          width: m.supplierWidth,
-          height: m.totalRowHeight,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12 * m.scale),
-            child: Text(
-              formatNumber(supplier.total),
-              key: ValueKey('supplier.$supplierId.total'),
-              style: headerStyle,
-            ),
-          ),
-        ),
+        _totalBox(context, m, width, supplier, headerStyle),
       ],
+    );
+  }
+
+  Widget _totalBox(
+    BuildContext context,
+    TableMetrics m,
+    double width,
+    SupplierBlock supplier,
+    TextStyle? headerStyle,
+  ) {
+    return GridBox(
+      width: width,
+      height: m.totalRowHeight,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      alignment: Alignment.centerRight,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12 * m.scale),
+        child: Text(
+          formatNumber(supplier.total),
+          key: ValueKey('supplier.${supplier.id}.total'),
+          style: headerStyle,
+        ),
+      ),
     );
   }
 
