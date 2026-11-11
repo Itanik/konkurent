@@ -12,15 +12,23 @@ editor backed by the Python recognition engine (`recog.py`, `normalizer.py`,
 ## KonkurentApp features
 
 - Excel-like table: fixed request columns on the left, supplier blocks scroll
-  horizontally.
-- Edit any cell in place.
+  horizontally; row heights adapt to content.
+- Edit any cell in place, including the unit price: enter a price and the sum
+  becomes price × qty, enter a sum and the price becomes sum / qty.
+- Per-supplier "without VAT" flag and a configurable global VAT rate (config
+  file, 22 % by default); the hidden "Sum, without VAT" column is a toolbar
+  toggle away.
 - Drag individual offers within a block (each supplier's rows are independent)
-  and drag whole supplier blocks left/right.
+  and drag whole supplier blocks left/right with a live insertion preview.
 - Sort suppliers by total amount — cheapest on the left.
-- Fill manually or automatically: drop an invoice (pdf / xlsx / xls / docx) and
-  recognized items appear as a new block.
+- Fill manually or automatically: drop an invoice (pdf / xlsx / xls / docx) —
+  items are recognized, and the supplier name (by legal form) and INN
+  (checksum-validated) are extracted from the invoice header.
+- Sums-only mode collapses the table down to supplier totals.
 - Save the result to xlsx and reopen a previously saved file.
 - Autosave the session between launches.
+- Zoom 50–200 %, middle-click Windows-style autoscroll, Shift+wheel scrolls
+  horizontally.
 - Computed values (unit price, totals) are never stored as constants — they are
   derived live and exported as Excel formulas.
 
@@ -103,18 +111,25 @@ The app then finds the sidecar next to itself and can run from any directory.
    panel header. Name and quantity are split by tab (Excel copy) or by the last
    comma (`Шпоночный материал 4х4, 5 м.п.`).
 4. **Editing** — clicking a cell turns it into an input field; Enter or clicking
-   away commits the value.
-5. **Reordering** — drag the handle (⠿) in a block header to swap suppliers, or a
+   away commits the value. Price and sum are linked both ways: editing the price
+   recomputes the sum (and vice versa), "the last edit wins".
+5. **Without VAT** — a checkbox in the supplier block header switches its sums to
+   the without-VAT basis. A toolbar button reveals the "Sum, without VAT" column.
+   The VAT rate lives in `app-config.json` (app-support, created on first run).
+6. **Reordering** — drag the handle (⠿) in a block header to swap suppliers, or a
    row handle to change the order of offers within a block.
-6. **Sorting** — the "Sort by total" button puts the cheapest supplier on the left.
-7. **Saving** — "Save xlsx" exports the table; "Open…" loads a previously saved
+7. **Sorting** — the "Sort by total" button puts the cheapest supplier on the left.
+8. **Sums-only mode** — a toolbar button collapses the table to the sum columns
+   (handy for a quick totals comparison).
+9. **Saving** — "Save xlsx" exports the table; "Open…" loads a previously saved
    file. Exported column widths fit their content, except "Item name" and
    "Offered" (fixed width, text wraps).
-8. **Zoom** — `− / % / +` buttons in the toolbar or `Ctrl+=` / `Ctrl+-` /
-   `Ctrl+0`; `Ctrl`+mouse wheel (outside input fields). 75–125 % zoom changes the
+10. **Zoom** — `− / % / +` buttons in the toolbar or `Ctrl+=` / `Ctrl+-` /
+   `Ctrl+0`; `Ctrl`+mouse wheel (outside input fields). 50–200 % zoom changes the
    real cell and font sizes: zooming out fits more offers on screen. Zoom is
-   remembered between launches.
-9. **New session** — the `New session` button clears the table (with a
+   remembered between launches. The middle mouse button starts a Windows-style
+   autoscroll; Shift+wheel scrolls horizontally.
+11. **New session** — the `New session` button clears the table (with a
    confirmation if there are unsaved changes). An unfinished session is kept
    between launches only while it has unsaved changes; once saved to xlsx it is
    not restored.

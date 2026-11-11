@@ -60,20 +60,26 @@ prints are redirected to stderr (the bridge parses stdout, so never print JSON t
 stdout elsewhere).
 
 ```bash
-.venv/bin/python3 sidecar.py --action=recognize --file=/abs/invoice.pdf
+.venv/bin/python3 sidecar.py --action=recognize --file=/abs/invoice.pdf [--legal-forms=/abs/legal-forms.json]
 .venv/bin/python3 sidecar.py --action=export --output=/abs/out.xlsx < state.json
 .venv/bin/python3 sidecar.py --action=import --file=/abs/saved.xlsx
 ```
 
 - `recognize` — PDF (camelot) / xlsx / xls / docx → `{status, supplierName,
-  sourceFileName, offers[]}`. Errors: `{status: "error", message}`.
+  sourceFileName, inn, kpp, ogrn, offers[]}`. `supplierName`/`inn`/`kpp`/`ogrn`
+  come from `supplier_extract.py` (legal form + checksums; failure to extract is
+  non-fatal — name falls back to the file stem). Errors: `{status: "error", message}`.
 - `export` — takes full `AppState` JSON on stdin, calls `recog.fill_template`.
+  Offers may carry `priceDriver: "price"` + `priceWithVat`/`priceWithoutVat`:
+  then the engine writes the price as a value and the sum as `=цена*кол-во`.
 - `import` — returns `{status:"foreign"}` if the xlsx is not ours (no `"Заявка"`
   sheet or A1 not starting with `"Заявка:"`); Flutter then falls back to `recognize`.
 - `docx` needs `python-docx` (in requirements); without it the sidecar returns a
   clear error.
 - Flutter locates the sidecar: built binary next to the executable, else
   `sidecar.py` searched upward from cwd (dev), using `../.venv/bin/python3`.
+  `--legal-forms` points at `legal-forms.json` in app-support (created by
+  `AppConfigService` on first launch).
 
 ## Verification workflow
 
@@ -99,6 +105,9 @@ recog.py   process_pdf_file()  camelot lattice -> stream fallback -> tuple (df, 
            fill_template()     config.json -> openpyxl workbook + all row/merge bookkeeping
 normalizer.py  picks the best camelot table, scores/finds the header row, maps
            columns onto STANDARD_COLUMNS, computes price-per-unit
+supplier_extract.py  supplier identity from invoice text: legal-form name,
+           INN (checksum-validated 10/12), KPP, OGRN. PDF via playa (already a
+           camelot dep), docx via python-docx, xlsx via pandas.
 config.json    single source of truth for the output table layout
 sidecar.py  argparse CLI wrapping the above for Flutter (recognize/export/import).
            `import camelot` is lazy so export/import work without the PDF stack.
@@ -106,6 +115,8 @@ sidecar.py  argparse CLI wrapping the above for Flutter (recognize/export/import
 konkurent_app/  Flutter Desktop editor (Riverpod + Material 3).
            lib/services/python_bridge.dart runs sidecar.py and parses JSON.
            lib/services/storage_service.dart persists the session as JSON.
+           lib/services/app_config_service.dart loads global settings
+           (app-config.json: vatRate, maxSuppliers; legal-forms.json).
            Full model/UI contract: konkurent_app/SPEC.md
 ```
 
@@ -137,9 +148,12 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
 - **The SUM total lives one row *below* the `Сумма` label** (recog.py:470-476):
   the label and the first-4-columns merge are at `total_row`, the
   `=SUM(...)` formula is at `total_row + 1`. Not a bug to "fix".
-- **Price per unit is an Excel formula, not a value**: `block_start+3` is
-  `=IFERROR(<block_start+5 sum>/<block_start+1 qty>,"")`. `normalizer.py` computes
-  `Цена за ед.` into the DataFrame but that column is never written to the sheet.
+- **Price per unit has two modes** (`_fill_data_row`): by default `block_start+3`
+  is the formula `=IFERROR(<block_start+5 sum>/<block_start+1 qty>,"")`, but when
+  the user typed a price (sidecar passes a 4th element in the pdf_data_list tuple)
+  the price cell becomes a value and the SUM cell becomes
+  `=IFERROR(<price cell>*<qty cell>,"")`. `normalizer.py` computes `Цена за ед.`
+  into the DataFrame but that column is never written to the sheet.
 - **In `normalizer.py`**, `COLUMN_PATTERNS` has no entry for `Цена за ед.`, so
   `map_columns` skips it by design, and a PDF table is only accepted at all if its
   best-scoring header row reaches 3 (`normalizer.py:191`).
@@ -186,6 +200,21 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   successful recognition. `sidecar.py` reconfigures stdout/stderr/stdin, and the
   bridge starts the child with `PYTHONUTF8=1` + `PYTHONIOENCODING=utf-8` and
   decodes with `Utf8Decoder(allowMalformed: true)`. Keep all three.
+- **Offer has exactly one "source of truth" per row (`PriceDriver`).** Editing
+  the sum switches the driver to `sum` and nulls the stored price; editing the
+  price (or the hidden «Сумма, без НДС» column) switches it the other way. Never
+  write to `sumWithVat`/`priceWithVat` directly in UI code — go through
+  `withSumInput` / `withPriceInput` / `withSumWithoutVatInput`, they maintain the
+  invariants. The VAT rate lives in the global config (`appConfigProvider`),
+  default 0.22.
+- **Row heights are measured, not fixed** (`rowHeightsProvider`): it lays out
+  every cell's text with a `TextPainter` at the current zoom and takes the row
+  max. When you add a new text column, register its width in
+  `lib/ui/comparison_table/row_heights.dart` or long text will overflow its
+  fixed-height row.
+- **View toggles are separate Riverpod notifiers** (`sumsOnlyProvider`,
+  `showSumWithoutVatProvider` in `view_preferences_provider.dart`) — session
+  state (AppState) must never depend on them; they are not persisted.
 
 ## Docs
 

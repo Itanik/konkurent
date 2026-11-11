@@ -43,6 +43,8 @@ class SupplierBlock {
   final String id;                   // uuid
   final String displayName;          // заголовок блока
   final String? sourceFileName;      // оригинальное имя файла (для экспорта)
+  final String? inn;                 // ИНН (распознан из счёта или введён)
+  final bool withoutVat;             // счёт без НДС: суммы считаются как «без НДС»
   final SupplierMeta meta;
   final List<Offer> offers;          // порядок = порядок строк
 }
@@ -55,25 +57,40 @@ class SupplierMeta {
   final String comment;        // Комментарий
 }
 
+enum PriceDriver { sum, price }
+
 class Offer {
   final String id;             // uuid
   final String itemName;       // Предложено
   final double? qty;           // Кол-во
   final String? unit;          // Ед.изм
-  final double? sumWithVat;    // Сумма, с НДС
+  final double? sumWithVat;    // Сумма, с НДС (первична при driver=sum)
   final double? sumWithoutVat; // Сумма, без НДС (скрытая колонка)
-  // pricePerUnit = sumWithVat / qty — вычисляется, не хранится
+  final double? priceWithVat;    // хранится только при driver=price
+  final double? priceWithoutVat; // хранится только при driver=price
+  final PriceDriver priceDriver; // «последняя правка выигрывает»
+  // displayPrice/displaySum(withoutVat) — вычисляются, не хранятся
 }
 ```
+
+**Цены и НДС.** У каждой строки один источник истины — `priceDriver`:
+ввели сумму → сумма хранится, цена выводится как `сумма / кол-во`; ввели цену →
+цена хранится, сумма выводится как `цена × кол-во`. Ставка НДС задаётся в
+глобальном конфиге (`app-config.json`, по умолчанию 22 %) и используется при
+пересчёте «с НДС ↔ без НДС». Флажок «без НДС» у поставщика переключает, какие
+суммы считаются основными. Колонка «Сумма, без НДС» скрыта и включается
+кнопкой в тулбаре.
 
 **Высота таблицы** — производная от данных:
 `maxRows = max(suppliers.map((s) => s.offers.length))`.
 Поставщики с меньшим числом предложений отображают пустые ячейки до `maxRows`.
 Строки предложений можно перетаскивать только внутри блока своего поставщика.
+Высота каждой строки — максимум по всем её ячейкам (перенос по словам, без
+лимита строк); метаполя переносятся так же.
 
 **Вычисляемые значения никогда не записываются константами** — они считаются
-на лету (`pricePerUnit = sumWithVat / qty`, `total = Σ sumWithVat`) и в xlsx
-экспортируются формулами (`=IFERROR(...)`, `=SUM(...)`).
+на лету и в xlsx экспортируются формулами: `=IFERROR(сумма/кол-во,"")` при
+driver=sum и `=IFERROR(цена*кол-во,"")` при driver=price; итоги — `=SUM(...)`.
 
 ## Структура UI
 
@@ -82,15 +99,18 @@ Scaffold
 ├── AppBar
 │   ├── RequestNameField
 │   ├── [Новая сессия]
+│   ├── [Режим сумм]               — спрятать колонки, кроме сумм
+│   ├── [Сумма без НДС]            — показать скрытую колонку
 │   ├── [+ Поставщик]
 │   ├── [Сортировать по сумме ↑]    — меняет порядок suppliers
 │   ├── [Открыть…]                  — импорт / открытие сессии
 │   ├── [Сохранить xlsx]            — экспорт
-│   └── [− 100 % +]                 — масштаб интерфейса
+│   └── [− 100 % +]                 — масштаб таблицы, 50–200 % с шагом 10 %
 │
 └── Body — DragDropWrapper          — drag файла на окно
     └── ComparisonTable
         ├── TableHeader             — строка 1: имена поставщиков + drag handle
+        ├── автоскролл средней кнопкой (Windows-стиль), Shift+колесо — горизонталь
         └── StickyHorizontalScroll
             ├── FixedPanel (не скроллится горизонтально, видна всегда)
             │   ├── FixedHeaderRow: ["№", "Название позиции", "Кол-во"] + [Вставить список]
@@ -98,14 +118,14 @@ Scaffold
             │   └── FixedMetaFooter: 5 меток + строка "Итого:"
             │
             └── ScrollableArea (горизонтальный скролл)
-                └── Row<SupplierColumn> (горизонтальный reorder)
+                └── Row<SupplierColumn> (горизонтальный reorder + live-превью вставки)
                     └── SupplierColumn
-                        ├── SupplierHeader: DragHandle + EditableText + [×]
-                        ├── ColumnSubheader: ["Предложено","Кол-во","Ед.","Ц/ед","Сумма"]
+                        ├── SupplierHeader: DragHandle + EditableText + [×] + чекбокс «без НДС»
+                        ├── ColumnSubheader: ["Предложено","Кол-во","Ед.","Ц/ед","(Сумма б/НДС)","Сумма"]
                         ├── OfferRows[0..displayRows-1] (вертикальный reorder)
-                        │   └── OfferRow: itemName, qty, unit, price (readonly), sumWithVat
+                        │   └── OfferRow: itemName, qty, unit, price, (sumWithoutVat), sum
                         ├── MetaRows × 5: EditableCell
-                        └── TotalRow: computed SUM(sumWithVat), read-only
+                        └── TotalRow: computed SUM, read-only
 ```
 
 **Пустые строки.** `displayRows = maxRows + 1`: внизу всегда есть одна запасная
@@ -158,12 +178,23 @@ Scaffold
   отступы, размеры иконок и тап-таргетов на `scale`. Поэтому при уменьшении в
   окно влезает больше колонок и строк.
 - `zoomProvider` + `tableMetricsProvider` (`lib/providers/zoom_provider.dart`):
-  диапазон **75–125 %, шаг 5 %**.
+  диапазон **50–200 %, шаг 10 %**.
 - `ZoomScope` (`lib/ui/zoom_scope.dart`) масштабирует текст и иконки всего
   приложения через `MediaQuery.textScaler` и `IconTheme` (без `Transform` и
   зазоров); шапка — `AppBar.toolbarHeight`/`iconTheme` пропорционально.
 - Управление: кнопки `− / % / +` в шапке, `Ctrl+=`, `Ctrl+-`, `Ctrl+0`,
   `Ctrl`+колесо (только вне поля ввода). Масштаб сохраняется в `settings.json`.
+- **Автоскролл средней кнопкой** (Windows-стиль): клик средним колесом ставит
+  якорь, скорость прокрутки зависит от отклонения курсора, обе оси; повторный
+  клик любой кнопкой выключает. **Shift+колесо** — горизонтальная прокрутка.
+
+## Автовысота строк
+
+`rowHeightsProvider` (`lib/ui/comparison_table/row_heights.dart`) замеряет
+`TextPainter`'ом каждую текстовую ячейку строки (панель заявки + все
+поставщики) и берёт максимум — без лимита строк; `EditableCell` переносит по
+словам. Мета-строки считаются так же. В экспортируемом xlsx высоты строк не
+задаются явно (перенос включён, Excel подбирает высоту сам).
 
 ## Ширины колонок в экспорте
 
@@ -197,12 +228,17 @@ Scaffold
 **Файл**: `sidecar.py` в корне репозитория (обёртка над `recog.py` / `normalizer.py`).
 
 ```bash
-# Распознавание файла
-python sidecar.py --action=recognize --file=/abs/path/to/file.pdf
+# Распознавание файла (--legal-forms: пользовательский список юрформ)
+python sidecar.py --action=recognize --file=/abs/path/to/file.pdf \
+    --legal-forms=/path/to/legal-forms.json
 # stdout:
 {
   "status": "ok",
-  "supplierName": "file.pdf",
+  "supplierName": "ООО «Ромашка»",   // из текста счёта, fallback — имя файла
+  "sourceFileName": "file.pdf",
+  "inn": "7707083893",               // с проверкой контрольной цифры, иначе null
+  "kpp": "770701001",
+  "ogrn": "1027700132195",
   "offers": [
     {"itemName": "Болт М8×40", "qty": 100, "unit": "шт",
      "sumWithVat": 1200.0, "sumWithoutVat": 1000.0}
@@ -219,6 +255,18 @@ python sidecar.py --action=import --file=/abs/path/to/saved.xlsx
 ```
 
 Поддерживаемые форматы при recognize: `.pdf`, `.xlsx`, `.xls`, `.docx`.
+
+**Извлечение реквизитов** (`supplier_extract.py`): текст счёта (PDF —
+`playa`, уже в зависимостях; docx — параграфы и таблицы; xlsx — все ячейки)
+сканируется на организационно-правовую форму; название = краткая форма +
+название в кавычках (первое вхождение, «лишнее» после названия отрезается).
+ИНН проверяется контрольной цифрой (10/12 знаков), КПП ищется по метке,
+ОГРН — по контрольной цифре. Сбой извлечения не валит распознавание позиций.
+
+**Экспорт цен.** В offer из state JSON читаются `priceDriver`
+(`"sum"`/`"price"`), `priceWithVat`, `priceWithoutVat`. При `driver=price`
+цена пишется значением, а сумма — формулой `=IFERROR(цена*кол-во,"")`;
+при `driver=sum` цена — формула `=IFERROR(сумма/кол-во,"")`, как раньше.
 
 Ошибки: всегда `{"status": "error", "message": "…"}` в stdout, код выхода 1.
 Импорт не своего xlsx: `{"status": "foreign"}`.
