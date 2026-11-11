@@ -1,8 +1,9 @@
 """Python sidecar for KonkurentApp (Flutter Desktop).
 
-Bridges the Flutter UI and the existing recognition engine in recog.py /
-normalizer.py. Communication is one JSON object per invocation: result on
-stdout, progress/errors folded into the JSON (never raw on stdout).
+Bridges the Flutter UI and the recognition engine in recog.py / normalizer.py.
+Communication is one JSON object per invocation: the result is the last line on
+stdout (all engine prints are redirected to stderr), errors are reported as
+{"status": "error"} inside the JSON.
 
 Usage:
     python sidecar.py --action=recognize --file=/abs/path/to/invoice.pdf
@@ -13,6 +14,7 @@ Usage:
 import os
 import sys
 import json
+import shutil
 import argparse
 import contextlib
 
@@ -70,6 +72,18 @@ def _stdout_to_stderr():
 def _fail(message):
     _emit({"status": "error", "message": message})
     sys.exit(1)
+
+
+def _gs_hint(path):
+    # camelot'у для lattice-режима нужен Ghostscript; без него остаётся только
+    # stream. Поэтому не фейлим заранее, а добавляем подсказку к ошибке
+    # распознавания PDF.
+    if os.path.splitext(path)[1].lower() != ".pdf":
+        return ""
+    if shutil.which("gs") is None and shutil.which("gswin64c") is None:
+        return ("; вероятно, не хватает Ghostscript (gs/gswin64c не найдены в PATH)"
+                " — без него доступен только stream-режим распознавания")
+    return ""
 
 
 def _cell_str(value):
@@ -146,11 +160,11 @@ def action_recognize(path):
     with _stdout_to_stderr():
         tables = _tables_for(path)
     if not tables:
-        _fail("Таблицы в файле не найдены")
+        _fail("Таблицы в файле не найдены" + _gs_hint(path))
 
     df, _orig, bez_nds = process_pdf_tables(tables, filename)
     if df.shape[0] == 0:
-        _fail("Не удалось распознать позиции в файле")
+        _fail("Не удалось распознать позиции в файле" + _gs_hint(path))
 
     offers = []
     for i in range(len(df)):
