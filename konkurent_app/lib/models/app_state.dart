@@ -94,14 +94,6 @@ class SupplierMeta {
   final String paymentTerms;
   final String comment;
 
-  static const keys = [
-    'contract',
-    'deliveryTime',
-    'delivery',
-    'paymentTerms',
-    'comment',
-  ];
-
   String value(String key) {
     switch (key) {
       case 'contract':
