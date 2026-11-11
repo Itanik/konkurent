@@ -326,19 +326,28 @@ def _to_num(val):
         return None
 
 
-def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds):
+def _fill_data_row(ws, row_idx, block_start, row_data, bez_nds, price=None):
     ws.cell(row=row_idx, column=block_start).value = row_data.get("Товар")
     ws.cell(row=row_idx, column=block_start + 1).value = _to_num(row_data.get("Кол-во"))
     ws.cell(row=row_idx, column=block_start + 2).value = row_data.get("Ед. изм")
 
     sum_col = get_column_letter(block_start + 5)
     qty_col = get_column_letter(block_start + 1)
-    ws.cell(row=row_idx, column=block_start + 3).value = (
-        f'=IFERROR({sum_col}{row_idx}/{qty_col}{row_idx},"")'
-    )
+    price_col = get_column_letter(block_start + 3)
+    if price is not None:
+        # Введённая вручную цена — источник истины: она пишется значением,
+        # а сумма становится формулой «цена × кол-во».
+        ws.cell(row=row_idx, column=block_start + 3).value = _to_num(price)
+        ws.cell(row=row_idx, column=block_start + 5).value = (
+            f'=IFERROR({price_col}{row_idx}*{qty_col}{row_idx},"")'
+        )
+    else:
+        ws.cell(row=row_idx, column=block_start + 3).value = (
+            f'=IFERROR({sum_col}{row_idx}/{qty_col}{row_idx},"")'
+        )
+        ws.cell(row=row_idx, column=block_start + 5).value = _to_num(row_data.get("Сумма"))
 
     ws.cell(row=row_idx, column=block_start + 4).value = _to_num(bez_nds)
-    ws.cell(row=row_idx, column=block_start + 5).value = _to_num(row_data.get("Сумма"))
 
     for off in (3, 4, 5):
         ws.cell(row=row_idx, column=block_start + off).number_format = "#,##0.00"
@@ -366,7 +375,8 @@ def _maybe_add_hidden_filename_row(ws, config, block_names, pdf_data_list):
         ws.cell(row=2, column=c).border = thin_border
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_fixed)
 
-    for b_idx, (df, _, _) in enumerate(pdf_data_list):
+    for b_idx, entry in enumerate(pdf_data_list):
+        df = entry[0]
         filename = df.columns.get_level_values(0)[0]
         sc = n_fixed + b_idx * block_size + 1
         ec = sc + block_size - 1
@@ -438,7 +448,11 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
             ws.cell(row=row_idx, column=2, value=name)
             ws.cell(row=row_idx, column=3, value=qty)
 
-    for df, orig_headers, bez_nds in pdf_data_list:
+    for entry in pdf_data_list:
+        df, bez_nds = entry[0], entry[2]
+        # Четвёртый элемент (опционально) — цены, введённые вручную:
+        # тогда сумма строки в xlsx становится формулой «цена × кол-во».
+        prices = entry[3] if len(entry) > 3 else None
         if df.shape[0] == 0:
             continue
 
@@ -464,7 +478,8 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
             row_idx = data_start + i
             row_data = {col: df.iloc[i][(filename, col)] for col in STANDARD_COLUMNS}
             bv = bez_nds[i] if i < len(bez_nds) else None
-            _fill_data_row(ws, row_idx, block["start"], row_data, bv)
+            pv = prices[i] if prices and i < len(prices) else None
+            _fill_data_row(ws, row_idx, block["start"], row_data, bv, price=pv)
 
         if len(df) > max_data_rows:
             extra = len(df) - max_data_rows
@@ -474,7 +489,8 @@ def fill_template(pdf_data_list, target_dir, script_dir, output_path=None,
                 row_idx = data_start + i
                 row_data = {col: df.iloc[i][(filename, col)] for col in STANDARD_COLUMNS}
                 bv = bez_nds[i] if i < len(bez_nds) else None
-                _fill_data_row(ws, row_idx, block["start"], row_data, bv)
+                pv = prices[i] if prices and i < len(prices) else None
+                _fill_data_row(ws, row_idx, block["start"], row_data, bv, price=pv)
 
             total_row += extra
             data_end += extra

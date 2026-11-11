@@ -150,7 +150,7 @@ def _tables_for(path):
     _fail(f"Неподдерживаемый формат: {ext or 'без расширения'}")
 
 
-def action_recognize(path):
+def action_recognize(path, legal_forms_path=None):
     if not os.path.isfile(path):
         _fail(f"Файл не найден: {path}")
 
@@ -177,10 +177,27 @@ def action_recognize(path):
             "sumWithoutVat": _num_or_none(bez_nds[i] if i < len(bez_nds) else None),
         })
 
+    # Реквизиты поставщика из «шапки» счёта (юридическая форма, ИНН/КПП/ОГРН).
+    # Сбой извлечения не должен валить распознавание позиций.
+    supplier_name = os.path.splitext(filename)[0]
+    inn = kpp = ogrn = None
+    try:
+        from supplier_extract import extract_supplier, load_legal_forms
+        forms = load_legal_forms(legal_forms_path) if legal_forms_path else None
+        info = extract_supplier(path, forms)
+        if info.get("name"):
+            supplier_name = info["name"]
+        inn, kpp, ogrn = info.get("inn"), info.get("kpp"), info.get("ogrn")
+    except Exception as e:
+        print(f"  Извлечение реквизитов не удалось: {e}")
+
     _emit({
         "status": "ok",
-        "supplierName": os.path.splitext(filename)[0],
+        "supplierName": supplier_name,
         "sourceFileName": filename,
+        "inn": inn,
+        "kpp": kpp,
+        "ogrn": ogrn,
         "offers": offers,
     })
 
@@ -222,23 +239,42 @@ def action_export(output):
 
         rows = []
         bez_nds = []
+        prices = []
         for i, off in enumerate(sup.get("offers", [])):
+            qty_num = _num_or_none(off.get("qty"))
+            price_w = _num_or_none(off.get("priceWithVat"))
+            price_wo = _num_or_none(off.get("priceWithoutVat"))
+            price_val = None
+            sum_val = _fmt_num(off.get("sumWithVat"))
+            bez = _fmt_num(off.get("sumWithoutVat"))
+
+            # Цена, введённая вручную (priceDriver == "price"): пишем её
+            # значением, сумму движок считает формулой «цена × кол-во».
+            if (off.get("priceDriver") or "sum") == "price" and (
+                price_w is not None or price_wo is not None
+            ):
+                price_val = price_w if price_w is not None else price_wo
+                sum_val = ""
+                if price_wo is not None and qty_num is not None:
+                    bez = price_wo * qty_num
+
             rows.append([
                 str(i + 1),
                 off.get("itemName") or "",
                 _fmt_num(off.get("qty")),
                 off.get("unit") or "",
                 "",
-                _fmt_num(off.get("sumWithVat")),
+                sum_val,
             ])
-            bez_nds.append(_fmt_num(off.get("sumWithoutVat")))
+            bez_nds.append(bez)
+            prices.append(price_val)
 
         df = pd.DataFrame(
             rows,
             columns=pd.MultiIndex.from_product([[filename], STANDARD_COLUMNS]),
         )
         orig = {col: col for col in STANDARD_COLUMNS}
-        pdf_data_list.append((df, orig, bez_nds))
+        pdf_data_list.append((df, orig, bez_nds, prices))
 
         block_names[filename] = display or filename
         meta = sup.get("meta") or {}
@@ -386,13 +422,16 @@ def main():
                         choices=["recognize", "export", "import"])
     parser.add_argument("--file")
     parser.add_argument("--output")
+    parser.add_argument("--legal-forms",
+                        help="JSON-файл со списком юридических форм для "
+                             "распознавания названия поставщика")
     args = parser.parse_args()
 
     try:
         if args.action == "recognize":
             if not args.file:
                 _fail("--file обязателен для recognize")
-            action_recognize(args.file)
+            action_recognize(args.file, args.legal_forms)
         elif args.action == "export":
             if not args.output:
                 _fail("--output обязателен для export")
