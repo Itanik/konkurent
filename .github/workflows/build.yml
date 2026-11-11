@@ -3,8 +3,9 @@ name: Build & Release
 # Как создать релиз:
 #   git tag v1.1.0
 #   git push origin v1.1.0
-# CI собирает Linux + Windows билды (legacy и Flutter) и публикует GitHub Release
-# с ZIP-архивами и автоматическими release notes из коммитов.
+# CI собирает Linux + Windows билды Flutter-приложения (со встроенным
+# Python-sidecar) и публикует GitHub Release с ZIP-архивами и автоматическими
+# release notes из коммитов.
 
 on:
   push:
@@ -13,68 +14,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-tk ghostscript
-
-      - name: Setup venv & install deps
-        run: |
-          python3 -m venv .venv
-          .venv/bin/pip install -r requirements.txt pyinstaller
-
-      - name: Build
-        run: ./build_portable.sh
-
-      - name: Pack
-        run: |
-          cd dist
-          zip -r ../konkurent-linux.zip конкурент/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: konkurent-linux-zip
-          path: konkurent-linux.zip
-
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install Ghostscript
-        run: choco install ghostscript --no-progress
-
-      - name: Setup venv & install deps
-        run: |
-          python -m venv .venv
-          .venv\Scripts\pip install -r requirements.txt pyinstaller
-
-      - name: Build
-        run: .\build_portable.bat
-
-      - name: Pack
-        run: |
-          cd dist
-          Compress-Archive -Path kongkurent -DestinationPath ..\konkurent-windows.zip
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: konkurent-windows-zip
-          path: konkurent-windows.zip
-
   flutter:
     strategy:
       fail-fast: false
@@ -184,7 +123,7 @@ jobs:
           path: ${{ matrix.zip }}
 
   release:
-    needs: [linux, windows, flutter]
+    needs: [flutter]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -192,12 +131,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: konkurent-*
+          pattern: konkurent-app-*
           merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
-          files: konkurent-*.zip
+          files: konkurent-app-*.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
