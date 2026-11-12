@@ -113,9 +113,12 @@ The app then finds the sidecar next to itself and can run from any directory.
 4. **Editing** — clicking a cell turns it into an input field; Enter or clicking
    away commits the value. Price and sum are linked both ways: editing the price
    recomputes the sum (and vice versa), "the last edit wins".
-5. **Without VAT** — a checkbox in the supplier block header switches its sums to
-   the without-VAT basis. A toolbar button reveals the "Sum, without VAT" column.
-   The VAT rate lives in `app-config.json` (app-support, created on first run).
+5. **Without VAT** — the checkbox in a block header switches the basis (values
+   migrate to the without-VAT columns). The icon next to it is for invoices
+   where line items are quoted net but the total is gross: values move to the
+   net column and the gross column is recomputed. The toolbar toggle reveals
+   the other basis' price+sum pair. The VAT rate lives in `app-config.json`
+   (app-support, created on first run).
 6. **Reordering** — drag the handle (⠿) in a block header to swap suppliers, or a
    row handle to change the order of offers within a block.
 7. **Sorting** — the "Sort by total" button puts the cheapest supplier on the left.
@@ -206,7 +209,8 @@ git tag v1.1.0 && git push origin v1.1.0
 ```
 
 **KonkurentApp** builds from CI include the sidecar; Ghostscript is still required
-on the target machine for PDF recognition.
+on the target machine for PDF recognition. Scanned PDFs (no text layer) are not
+recognized — OCR is not supported; the app reports this when you try.
 
 ---
 

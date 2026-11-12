@@ -88,6 +88,14 @@ stdout elsewhere).
   `.venv/bin/python3 recog.py example_data` plus opening the produced
   `конкурент <folder>.xlsx`. The Flutter side is covered by `flutter test`
   (incl. `sidecar_roundtrip_test`) and `integration_test` (opens a window).
+- `example_data/krep/` holds the maintainer's private real-world invoices used
+  to tune recognition (do not commit, do not mention file names anywhere).
+  Quick loop while debugging extraction/parsing: run
+  `sidecar.py --action=recognize --file=...` over each PDF and compare the
+  supplier name against the file-name prefix. One fixture is a scanned PDF with
+  no text layer — it must fail recognition with the scanned-document hint.
+- **Scanned PDFs are not supported** (no OCR); recognition errors for them
+  carry a hint from `sidecar._scan_hint`.
 - `scripts`-style checks used by the past refactor plans live in `.opencode/plans/`
   (`PLAN*.md`) — those files document the step-by-step branch/substep/control-point
   convention the maintainer follows, including the exact verification commands.
@@ -156,7 +164,15 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   into the DataFrame but that column is never written to the sheet.
 - **In `normalizer.py`**, `COLUMN_PATTERNS` has no entry for `Цена за ед.`, so
   `map_columns` skips it by design, and a PDF table is only accepted at all if its
-  best-scoring header row reaches 3 (`normalizer.py:191`).
+  best-scoring header row reaches 3 (`normalizer.py:191`). Header-column ties now
+  resolve to the *earlier* column (reference «Кол-во шт. (справочно)» must not
+  steal the real «Кол-во»); `normalize_table` also re-joins camelot-stream
+  name fragments around the numeric row and splits qty glued into the unit
+  cell («9 шт»).
+- **`extract_with_camelot` runs BOTH flavors and merges tables.** Lattice alone
+  missed whole item tables in text-based invoices (1C layout without rules);
+  `find_best_table` picks the winner by header score, so merging is safe.
+  Never go back to lattice-only fallback-on-empty.
 - **Supplier blocks are deduped by substring**: `filename in b["name"]`. This is how
   re-runs append new suppliers to the right instead of duplicating.
 - **`fill_template(..., meta_values=None)`** — optional `{filename: {label: value}}`
@@ -200,21 +216,25 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   successful recognition. `sidecar.py` reconfigures stdout/stderr/stdin, and the
   bridge starts the child with `PYTHONUTF8=1` + `PYTHONIOENCODING=utf-8` and
   decodes with `Utf8Decoder(allowMalformed: true)`. Keep all three.
-- **Offer has exactly one "source of truth" per row (`PriceDriver`).** Editing
-  the sum switches the driver to `sum` and nulls the stored price; editing the
-  price (or the hidden «Сумма, без НДС» column) switches it the other way. Never
-  write to `sumWithVat`/`priceWithVat` directly in UI code — go through
-  `withSumInput` / `withPriceInput` / `withSumWithoutVatInput`, they maintain the
-  invariants. The VAT rate lives in the global config (`appConfigProvider`),
-  default 0.22.
+- **Offer stores exactly one side of the VAT pair (`PriceDriver`).** `displaySum`
+  / `displayPrice` derive the other side through the VAT rate on the fly — the
+  stored sibling stays null by design (tests assert `displaySum`, not the stored
+  sibling). Editing goes through `withSumInput` / `withPriceInput`; the two
+  bulk moves are `vatMoveValues` (checkbox basis switch, values migrate to the
+  new basis) and `vatMoveGrossToNet` («позиции без НДС» button: values move to
+  net, gross is recomputed, columns stay visible). The VAT rate lives in the
+  global config (`appConfigProvider`), default 0.22.
 - **Row heights are measured, not fixed** (`rowHeightsProvider`): it lays out
-  every cell's text with a `TextPainter` at the current zoom and takes the row
-  max. When you add a new text column, register its width in
-  `lib/ui/comparison_table/row_heights.dart` or long text will overflow its
-  fixed-height row.
+  every cell's text with a `TextPainter` using `TableMetrics` text widths
+  (`itemTextWidth` etc. — borders and padding deducted, `-18`). When you add a
+  new text column, register its text width in `TableMetrics` and use it in
+  `row_heights.dart` with the same deduction, or the measured wrap diverges
+  from the real wrap and the last line clips.
 - **View toggles are separate Riverpod notifiers** (`sumsOnlyProvider`,
   `showSumWithoutVatProvider` in `view_preferences_provider.dart`) — session
-  state (AppState) must never depend on them; they are not persisted.
+  state (AppState) must never depend on them; they are not persisted. The
+  secondary pair is only shown for suppliers on the gross basis (net-basis
+  suppliers already show net as primary).
 
 ## Docs
 
