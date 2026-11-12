@@ -31,6 +31,10 @@ def _normalize_number(s):
     try:
         return str(float(s))
     except ValueError:
+        # «50 шт» → 50: ведущее число с коротким нечисловым хвостом.
+        m = re.match(r"^(\d+(?:\.\d+)?)\D*$", s)
+        if m:
+            return m.group(1)
         return s
 
 
@@ -97,7 +101,9 @@ def map_columns(header_row):
                 existing_cell = str(header_row[existing_idx]).lower().strip()
                 new_score = sum(1 for p in COLUMN_PATTERNS[best_match] if p in cell_lower)
                 old_score = sum(1 for p in COLUMN_PATTERNS[best_match] if p in existing_cell)
-                if new_score > old_score or (new_score == old_score and col_idx > existing_idx):
+                # При равенстве побеждает более ранняя колонка: справочные
+                # «Кол-во шт. (справочно)» не должны отбирать место у «Кол-во».
+                if new_score > old_score:
                     mapping[best_match] = col_idx
     return mapping
 
@@ -114,16 +120,76 @@ def find_bez_nds_column(header_row, mapped_indices):
 
 
 def normalize_table(df, header_row_idx, col_mapping, bez_nds_col_idx):
-    data_rows = []
-    bez_nds_values = []
+    # Первый проход: классификация строк. Camelot stream разбивает перенос
+    # длинных ячеек на отдельные строки: имя позиции оказывается во
+    # «фрагментах» над и под строкой с числами. Склеиваем их обратно.
+    entries = []  # dict(kind=data|frag|sep, vals, bez, prepend, append)
     for row_idx in range(header_row_idx + 1, len(df)):
         row = df.iloc[row_idx]
         row_vals = [_clean_cell(row[col_mapping.get(col)]) if col in col_mapping else ""
                     for col in STANDARD_COLUMNS]
         if _row_is_empty(row_vals) or _row_is_summary(row_vals):
+            entries.append({"kind": "sep"})
             continue
+        name = row_vals[1].strip()
+        has_numeric = any(row_vals[i].strip() for i in (0, 2, 5))
+        if name and not has_numeric and not row_vals[3].strip():
+            entries.append({"kind": "frag", "name": name})
+            continue
+        bez = ""
+        if bez_nds_col_idx is not None:
+            bez = _normalize_number(_clean_cell(row[bez_nds_col_idx]))
+        entries.append({"kind": "data", "vals": row_vals, "bez": bez,
+                        "prepend": [], "append": []})
+
+    # Непрерывные цепочки frag (между ними нет sep) присоединяем к соседним
+    # data-строкам: всё, кроме последнего фрагмента, — к строке сверху,
+    # последний — к строке снизу (так переносятся заголовки позиций).
+    has_data = any(e["kind"] == "data" for e in entries)
+    if has_data:
+        i = 0
+        while i < len(entries):
+            if entries[i]["kind"] != "frag":
+                i += 1
+                continue
+            j = i
+            while j < len(entries) and entries[j]["kind"] == "frag":
+                j += 1
+            above = i - 1 if i > 0 and entries[i - 1]["kind"] == "data" else None
+            below = j if j < len(entries) and entries[j]["kind"] == "data" else None
+            run = [entries[k]["name"] for k in range(i, j)]
+            if above is not None and below is not None:
+                if len(run) == 1:
+                    entries[above]["append"] += run
+                else:
+                    entries[above]["append"] += run[:-1]
+                    entries[below]["prepend"] += run[-1:]
+            elif above is not None:
+                entries[above]["append"] += run
+            elif below is not None:
+                entries[below]["prepend"] += run
+            for k in range(i, j):
+                entries[k]["kind"] = "sep"
+            i = j
+
+    data_rows = []
+    bez_nds_values = []
+    for e in entries:
+        if e["kind"] != "data":
+            continue
+        row_vals = e["vals"]
+        parts = e["prepend"] + ([row_vals[1].strip()] if row_vals[1].strip() else [])
+        parts += e["append"]
+        row_vals[1] = " ".join(p for p in parts if p)
         if not row_vals[1].strip():
             continue
+        # Склеенные «9 шт» в колонке единиц: у части счетов количество
+        # попадает в ячейку «Ед.», а «Кол-во» остаётся пустым.
+        if not row_vals[2].strip() and row_vals[3].strip():
+            m = re.match(r"^(\d+(?:[.,]\d+)?)\s+(\D.{0,14})$", row_vals[3].strip())
+            if m:
+                row_vals[2] = m.group(1).replace(",", ".")
+                row_vals[3] = m.group(2).strip()
         row_vals[2] = _normalize_number(row_vals[2])
         row_vals[5] = _normalize_number(row_vals[5])
         try:
@@ -133,14 +199,7 @@ def normalize_table(df, header_row_idx, col_mapping, bez_nds_col_idx):
                 row_vals[4] = str(round(total / qty, 2))
         except (ValueError, TypeError):
             pass
-
-        if bez_nds_col_idx is not None:
-            bv = _clean_cell(row[bez_nds_col_idx])
-            bv = _normalize_number(bv)
-            bez_nds_values.append(bv)
-        else:
-            bez_nds_values.append("")
-
+        bez_nds_values.append(e["bez"])
         data_rows.append(row_vals)
 
     if not data_rows:

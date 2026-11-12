@@ -25,15 +25,17 @@ def extract_with_camelot(pdf_path):
     except Exception as e:
         print(f"    Ошибка lattice: {e}")
 
-    if not tables:
-        print(f"  Camelot (stream)...")
-        try:
-            stream_tables = camelot.read_pdf(pdf_path, pages="all", flavor="stream")
-            if len(stream_tables) > 0:
-                print(f"    Найдено {len(stream_tables)} таблиц(а) методом stream")
-                tables.extend(stream_tables)
-        except Exception as e:
-            print(f"    Ошибка stream: {e}")
+    # Stream пробуем всегда, а не только при пустом lattice: у счетов без
+    # линеек (типовая верстка 1С) lattice не видит таблицу позиций вовсе или
+    # возвращает мусор, а normalizer выбирает лучшую таблицу по скору шапки.
+    print(f"  Camelot (stream)...")
+    try:
+        stream_tables = camelot.read_pdf(pdf_path, pages="all", flavor="stream")
+        if len(stream_tables) > 0:
+            print(f"    Найдено {len(stream_tables)} таблиц(а) методом stream")
+            tables.extend(stream_tables)
+    except Exception as e:
+        print(f"    Ошибка stream: {e}")
 
     return tables
 

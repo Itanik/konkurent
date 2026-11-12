@@ -86,6 +86,21 @@ def _gs_hint(path):
     return ""
 
 
+def _scan_hint(path):
+    # У отсканированного PDF нет текстового слоя — распознавание без OCR
+    # обречено. Проверяем дёшево (первые страницы), только для PDF.
+    if os.path.splitext(path)[1].lower() != ".pdf":
+        return ""
+    try:
+        from supplier_extract import extract_text
+        if len(extract_text(path, max_pages=2).strip()) < 10:
+            return ("; похоже, документ отсканирован (нет текстового слоя)"
+                    " — OCR не поддерживается")
+    except Exception:
+        pass
+    return ""
+
+
 def _cell_str(value):
     if value is None:
         return ""
@@ -160,11 +175,12 @@ def action_recognize(path, legal_forms_path=None):
     with _stdout_to_stderr():
         tables = _tables_for(path)
     if not tables:
-        _fail("Таблицы в файле не найдены" + _gs_hint(path))
+        _fail("Таблицы в файле не найдены" + _gs_hint(path) + _scan_hint(path))
 
     df, _orig, bez_nds = process_pdf_tables(tables, filename)
     if df.shape[0] == 0:
-        _fail("Не удалось распознать позиции в файле" + _gs_hint(path))
+        _fail("Не удалось распознать позиции в файле" + _gs_hint(path)
+              + _scan_hint(path))
 
     offers = []
     for i in range(len(df)):

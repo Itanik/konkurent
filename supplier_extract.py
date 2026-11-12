@@ -63,6 +63,17 @@ _TRAILING_JUNK = re.compile(
     re.IGNORECASE,
 )
 
+# Маркеры банковских строк: в счёте банк почти всегда идёт первым носителем
+# юрформы («ФИЛИАЛ ... АО "АЛЬФА-БАНК"», «... БАНК ПАО СБЕРБАНК»).
+_BANK_MARKERS = re.compile(r"банк|бик|р/с|к/с|корр", re.IGNORECASE)
+
+# Контекст поставщика/заказчика вокруг строки с юрформой.
+_SUPPLIER_LABELS = re.compile(
+    r"поставщик|продавец|исполнитель|получатель", re.IGNORECASE)
+_BUYER_LABELS = re.compile(r"заказчик|плательщик|покупатель|грузополучатель",
+                           re.IGNORECASE)
+_REQUISITE_MARKERS = re.compile(r"ИНН|КПП|ОГРН", re.IGNORECASE)
+
 
 def load_legal_forms(path):
     """Список юрформ из JSON-файла (список строк); при ошибке — дефолт."""
@@ -127,31 +138,85 @@ def extract_text(path, max_pages=5):
     return ""
 
 
-def find_supplier_name(text, legal_forms=None):
-    """Название организации по первому вхождению юрформы.
+def _line_spans(text):
+    spans = []
+    pos = 0
+    for line in text.split("\n"):
+        spans.append((pos, pos + len(line)))
+        pos += len(line) + 1
+    return spans
 
-    Возвращает «КРАТКАЯФОРМА Название» (в кавычках, если найдено), либо None —
-    тогда вызывающий код оставляет имя файла как название.
+
+def _choose_supplier_candidate(text, legal_forms):
+    """Лучший кандидат (форма, позиция, индекс строки) вместо первого вхождения.
+
+    В счетах первым носителем юрформы часто оказывается банк («…БАНК ПАО
+    СБЕРБАНК», «АО "АЛЬФА-БАНК"»). Кандидаты ранжируются: банковские строки и
+    строки заказчика штрафуются, строки с реквизитами (ИНН/КПП) и метками
+    «Поставщик/Продавец/Исполнитель/Получатель» — поощряются; ничья — раньше
+    по тексту.
     """
     if not text:
         return None
-    forms = legal_forms or DEFAULT_LEGAL_FORMS
+    forms = [f.strip() for f in (legal_forms or DEFAULT_LEGAL_FORMS) if f.strip()]
+    lines = text.split("\n")
+    spans = _line_spans(text)
 
-    best_pos, best_form = None, None
+    def line_of(pos):
+        for i, (a, b) in enumerate(spans):
+            if a <= pos < b:
+                return i
+        return len(lines) - 1
+
+    counts = {}
     for form in forms:
-        f = form.strip()
-        if not f:
-            continue
-        m = re.search(rf"\b{re.escape(f.lower())}\b", text.lower())
-        if m and (best_pos is None or m.start() < best_pos):
-            best_pos, best_form = m.start(), f
+        pattern = re.compile(rf"\b{re.escape(form.lower())}\b")
+        counts[form.lower()] = len(pattern.findall(text.lower()))
 
-    if best_form is None:
+    best = None  # (score, -pos, form, line_idx)
+    for form in forms:
+        pattern = re.compile(rf"\b{re.escape(form.lower())}\b")
+        for m in pattern.finditer(text.lower()):
+            line_idx = line_of(m.start())
+            line = lines[line_idx]
+            if _BANK_MARKERS.search(line):
+                continue  # строка банка: АЛЬФА-БАНК, СБЕРБАНК, БИК, р/с…
+            prev_line = lines[line_idx - 1] if line_idx > 0 else ""
+            next_line = lines[line_idx + 1] if line_idx + 1 < len(lines) else ""
+
+            score = 1
+            if _REQUISITE_MARKERS.search(line) or _REQUISITE_MARKERS.search(prev_line) \
+                    or _REQUISITE_MARKERS.search(next_line):
+                score += 2
+            ctx = line + "\n" + prev_line + "\n" + next_line
+            if _SUPPLIER_LABELS.search(ctx):
+                score += 2
+            if _BUYER_LABELS.search(line) or _BUYER_LABELS.search(prev_line):
+                score -= 5
+            count = counts.get(form.lower(), 1)
+            if count >= 4:
+                score += 2
+            elif count >= 2:
+                score += 1
+
+            key = (score, -m.start())
+            if best is None or key > best[0]:
+                best = (key, form, m.start(), line_idx)
+
+    if best is None:
         return None
+    _, form, pos, line_idx = best
+    return form, pos, line_idx
 
-    line_end = text.find("\n", best_pos)
-    line = text[best_pos: line_end if line_end != -1 else len(text)]
-    short = _SHORT_FORMS.get(best_form.lower(), best_form.upper())
+
+def _supplier_name_from(text, chosen):
+    if chosen is None:
+        return None
+    form, pos, line_idx = chosen
+    spans = _line_spans(text)
+    line = text[pos: spans[line_idx][1]]
+
+    short = _SHORT_FORMS.get(form.lower(), form.upper())
 
     quoted = _QUOTED.search(line)
     if quoted:
@@ -159,12 +224,34 @@ def find_supplier_name(text, legal_forms=None):
         if name:
             return f"{short} «{name}»"
 
-    rest = line[len(best_form):].lstrip(" \t.,:;-—")
+    # Название может быть перенесено на следующую непустую строку
+    # («Поставщик:\nООО «Ромашка»»).
+    if not quoted and len(line.strip()) <= len(form) + 2:
+        lines = text.split("\n")
+        for follow in lines[line_idx + 1:line_idx + 3]:
+            if follow.strip():
+                fq = _QUOTED.search(follow)
+                if fq:
+                    fname = _clean(fq.group(1))
+                    if fname:
+                        return f"{short} «{fname}»"
+                break
+
+    rest = line[len(form):].lstrip(" \t.,:;-—")
     rest = _TRAILING_JUNK.split(rest, maxsplit=1)[0]
     rest = _clean(rest).strip(".,;:—-")
     if 2 <= len(rest) <= 100:
         return f"{short} {rest}"
     return None
+
+
+def find_supplier_name(text, legal_forms=None):
+    """Название организации-поставщика по юрформе (ранжирование кандидатов).
+
+    Возвращает «КРАТКАЯФОРМА Название» (в кавычках, если найдено), либо None —
+    тогда вызывающий код оставляет имя файла как название.
+    """
+    return _supplier_name_from(text, _choose_supplier_candidate(text, legal_forms))
 
 
 def _checksum(digits, weights):
@@ -224,12 +311,29 @@ def find_ogrn(text):
     return labeled or plain
 
 
+def _find_inn_near(text, line_idx, window=2):
+    """ИНН в строках рядом с выбранным кандидатом (поставщик, не заказчик)."""
+    if not text or line_idx is None:
+        return None
+    lines = text.split("\n")
+    for i in range(max(0, line_idx - window),
+                   min(len(lines), line_idx + window + 1)):
+        for m in re.finditer(r"(?<!\d)(\d{10}|\d{12})(?!\d)", lines[i]):
+            if _inn_valid(m.group(1)):
+                return m.group(1)
+    return None
+
+
 def extract_supplier(path, legal_forms=None):
     """Реквизиты поставщика из файла: {name, inn, kpp, ogrn} (None если нет)."""
     text = extract_text(path)
+    chosen = _choose_supplier_candidate(text, legal_forms)
+    inn = _find_inn_near(text, chosen[2]) if chosen else None
+    if inn is None:
+        inn = find_inn(text)
     return {
-        "name": find_supplier_name(text, legal_forms),
-        "inn": find_inn(text),
+        "name": _supplier_name_from(text, chosen),
+        "inn": inn,
         "kpp": find_kpp(text),
         "ogrn": find_ogrn(text),
     }
