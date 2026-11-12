@@ -161,14 +161,19 @@ class _EditableCellState extends State<EditableCell> {
           focusNode: _focus,
           autofocus: true,
           textAlign: widget.textAlign,
+          textAlignVertical: TextAlignVertical.center,
           keyboardType: widget.numeric
               ? const TextInputType.numberWithOptions(decimal: true)
               : TextInputType.text,
+          // Поле занимает всю ячейку и переносит текст: многострочные
+          // названия редактируются целиком, а не в узкой однострочной строке.
+          maxLines: null,
+          expands: true,
           style: Theme.of(context).textTheme.bodyMedium,
           decoration: const InputDecoration(
             isDense: true,
             border: OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           ),
           onSubmitted: (_) => _commit(),
           onTapOutside: (_) => _commit(),

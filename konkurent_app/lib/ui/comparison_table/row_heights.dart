@@ -68,13 +68,20 @@ final rowHeightsProvider = Provider<TableHeights>((ref) {
   return TableHeights(data, meta);
 });
 
+/// Межстрочный множитель bodyMedium (Material 3): 20px при fontSize 14.
+const double _bodyLineHeight = 20 / 14;
+
 double _measuredHeight(
     String text, double availableWidth, double scale, double base) {
   if (text.trim().isEmpty) return base;
   final painter = TextPainter(
     // Дисплейный текст ячейки — bodyMedium (14) с масштабом ZoomScope;
-    // измеряем тем же эффективным размером шрифта.
-    text: TextSpan(text: text, style: TextStyle(fontSize: 14 * scale)),
+    // измеряем тем же размером и той же межстрочной высотой, иначе
+    // многострочный перенос не влезает в посчитанную высоту строки.
+    text: TextSpan(
+      text: text,
+      style: TextStyle(fontSize: 14 * scale, height: _bodyLineHeight),
+    ),
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: math.max(availableWidth, 20));
   final height = painter.height + 8 + 2; // запас на паддинги/рамки

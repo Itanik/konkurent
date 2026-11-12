@@ -100,6 +100,21 @@ void main() {
       expect(priced.priceWithVat, closeTo(122, 1e-9));
     });
 
+    test('vatMoveNetToGross — обратная операция: значения возвращаются', () {
+      const offer = Offer(id: 'o1', qty: 4, sumWithVat: 122);
+      final roundTrip =
+          offer.vatMoveGrossToNet(vat).vatMoveNetToGross(vat);
+      expect(roundTrip.sumWithVat, closeTo(122, 1e-6)); // исходное значение
+      expect(roundTrip.sumWithoutVat, isNull);
+
+      final pricedRoundTrip = Offer(id: 'o2', qty: 4)
+          .withPriceInput(100, withoutVat: false)
+          .vatMoveGrossToNet(vat)
+          .vatMoveNetToGross(vat);
+      expect(pricedRoundTrip.priceWithVat, closeTo(100, 1e-6));
+      expect(pricedRoundTrip.priceWithoutVat, isNull);
+    });
+
     test('vatMoveValues: перенос значений при смене флажка (в обе стороны)', () {
       const offer = Offer(id: 'o1', qty: 4, sumWithVat: 100);
       final toNet = offer.vatMoveValues(toNet: true);

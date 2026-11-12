@@ -54,22 +54,31 @@ class AppStateNotifier extends Notifier<AppState> {
 
   /// Флажок «без НДС»: переключает базис блока и перекидывает введённые
   /// значения в колонки нового базиса (колонки старого скрываются).
+  /// Состояние кнопки «позиции без НДС» сбрасывается.
   void setSupplierWithoutVat(String id, bool value) {
     _updateSupplier(id, (s) {
       final offers =
           s.offers.map((o) => o.vatMoveValues(toNet: value)).toList();
-      return s.copyWith(withoutVat: value, offers: offers);
+      return s.copyWith(
+        withoutVat: value,
+        vatMovedToNet: false,
+        offers: offers,
+      );
     });
   }
 
-  /// «Позиции в счёте без НДС»: разовый перенос значений с НДС на базис
-  /// «без НДС» и пересчёт колонок с НДС (= без НДС × (1 + ставка)).
-  /// Колонки с НДС остаются видимыми.
+  /// Кнопка «позиции в счёте без НДС» — тумблер: первое нажатие переносит
+  /// значения на базис «без НДС» и пересчитывает колонку с НДС
+  /// (= без НДС × (1 + ставка)); повторное возвращает как было
+  /// (= без НДС / (1 + ставка)). Колонки с НДС остаются видимыми.
   void recomputeVatFromNet(String id) {
     final vat = _vat;
     _updateSupplier(id, (s) {
-      final offers = s.offers.map((o) => o.vatMoveGrossToNet(vat)).toList();
-      return s.copyWith(offers: offers);
+      final toNet = !s.vatMovedToNet;
+      final offers = s.offers
+          .map((o) => toNet ? o.vatMoveGrossToNet(vat) : o.vatMoveNetToGross(vat))
+          .toList();
+      return s.copyWith(offers: offers, vatMovedToNet: toNet);
     });
   }
 

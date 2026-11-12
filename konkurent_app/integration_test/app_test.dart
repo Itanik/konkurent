@@ -534,7 +534,7 @@ void main() {
     expect(restored.offers.first.sumWithVat, 100);
   });
 
-  testWidgets('кнопка «позиции без НДС» пересчитывает колонку с НДС',
+  testWidgets('кнопка «позиции без НДС» — тумблер: повтор нажимает обратно',
       (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
@@ -548,15 +548,25 @@ void main() {
         );
     await tester.pumpAndSettle();
 
-    // Колонки с НДС остаются видимыми, значения переезжают на «без НДС».
+    // 1-е нажатие: значения на «без НДС», колонка с НДС пересчитана.
     await tester.tap(find.byKey(const ValueKey('supplier.s1.vatMove')));
     await tester.pumpAndSettle();
 
-    final offer = container.read(appStateProvider).suppliers.first.offers.first;
-    expect(offer.sumWithoutVat, 122);
-    expect(offer.sumWithVat, closeTo(122 * 1.22, 1e-9));
-    // Базис блока не изменился.
-    expect(container.read(appStateProvider).suppliers.first.withoutVat, isFalse);
+    final moved = container.read(appStateProvider).suppliers.first.offers.first;
+    expect(moved.sumWithoutVat, 122);
+    expect(moved.sumWithVat, closeTo(122 * 1.22, 1e-9));
+    expect(container.read(appStateProvider).suppliers.first.vatMovedToNet,
+        isTrue);
+
+    // 2-е нажатие: всё вернулось к исходным значениям.
+    await tester.tap(find.byKey(const ValueKey('supplier.s1.vatMove')));
+    await tester.pumpAndSettle();
+
+    final back = container.read(appStateProvider).suppliers.first.offers.first;
+    expect(back.sumWithVat, 122);
+    expect(back.sumWithoutVat, isNull);
+    expect(container.read(appStateProvider).suppliers.first.vatMovedToNet,
+        isFalse);
   });
 
   testWidgets('режим сумм показывает суммы позиций и прячет остальные колонки',
@@ -577,9 +587,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('toolbar.sumsOnly')));
     await tester.pumpAndSettle();
 
-    // Колонки предложений спрятаны, но ячейка суммы позиции видна и итог на месте.
+    // Колонки предложений спрятаны, но ячейка суммы позиции видна, позиции
+    // заявки и итог на месте.
     expect(find.byKey(const ValueKey('offer.o1.item')), findsNothing);
     expect(find.byKey(const ValueKey('offer.o1.sum')), findsOneWidget);
+    expect(find.byKey(const ValueKey('fixed.item.0.name')), findsOneWidget);
     expect(
         find.byKey(const ValueKey('supplier.s1.meta.contract')), findsOneWidget);
     expect(find.byKey(const ValueKey('supplier.s1.total')), findsOneWidget);

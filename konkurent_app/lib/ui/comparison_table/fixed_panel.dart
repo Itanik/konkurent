@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/app_state_provider.dart';
 import '../../providers/zoom_provider.dart';
-import '../../providers/view_preferences_provider.dart';
 import '../../utils/request_items_parse.dart';
 import '../constants.dart';
 import 'editable_cell.dart';
@@ -23,7 +22,6 @@ class FixedPanel extends ConsumerWidget {
     final notifier = ref.read(appStateProvider.notifier);
     final m = ref.watch(tableMetricsProvider);
     final heights = ref.watch(rowHeightsProvider);
-    final sumsOnly = ref.watch(sumsOnlyProvider);
     final maxRows = heights.data.length; // + запасная пустая строка внутри
     final headerStyle = Theme.of(context).textTheme.titleSmall;
     final horizontal = EdgeInsets.symmetric(horizontal: 8 * m.scale);
@@ -59,76 +57,77 @@ class FixedPanel extends ConsumerWidget {
             _header(context, m, 'Кол-во', m.fixedQtyWidth, TextAlign.center),
           ],
         ),
-        if (!sumsOnly)
-          for (var i = 0; i < maxRows; i++)
-            Row(
-              children: [
-                GridBox(
-                  width: m.fixedNumberWidth,
-                  height: heights.data[i],
-                  alignment: Alignment.center,
-                  child: Text('${i + 1}'),
-                ),
-                GridBox(
-                  width: m.fixedNameWidth,
-                  height: heights.data[i],
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: EditableCell(
-                          testId: 'fixed.item.$i.name',
-                          hint: 'Позиция ${i + 1}',
-                          value: i < state.requestItems.length
-                              ? state.requestItems[i].name
-                              : '',
-                          onChanged: (v) =>
-                              notifier.updateRequestItem(i, name: v),
-                          onPaste: (text) {
-                            final items = parseRequestItems(text);
-                            if (items.length < 2 &&
-                                !text.contains('\t') &&
-                                !text.contains('\n')) {
-                              return false;
-                            }
-                            if (items.isEmpty) return false;
-                            notifier.pasteRequestItems(i, items);
-                            return true;
-                          },
-                        ),
+        // Позиции заявки видны всегда, в т.ч. в режиме сумм — иначе не видно,
+        // к какой позиции относится сумма поставщика.
+        for (var i = 0; i < maxRows; i++)
+          Row(
+            children: [
+              GridBox(
+                width: m.fixedNumberWidth,
+                height: heights.data[i],
+                alignment: Alignment.center,
+                child: Text('${i + 1}'),
+              ),
+              GridBox(
+                width: m.fixedNameWidth,
+                height: heights.data[i],
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: EditableCell(
+                        testId: 'fixed.item.$i.name',
+                        hint: 'Позиция ${i + 1}',
+                        value: i < state.requestItems.length
+                            ? state.requestItems[i].name
+                            : '',
+                        onChanged: (v) =>
+                            notifier.updateRequestItem(i, name: v),
+                        onPaste: (text) {
+                          final items = parseRequestItems(text);
+                          if (items.length < 2 &&
+                              !text.contains('\t') &&
+                              !text.contains('\n')) {
+                            return false;
+                          }
+                          if (items.isEmpty) return false;
+                          notifier.pasteRequestItems(i, items);
+                          return true;
+                        },
                       ),
-                      if (i < state.requestItems.length)
-                        IconButton(
-                          key: ValueKey('fixed.item.$i.delete'),
-                          iconSize: m.actionIconSize,
-                          padding: EdgeInsets.zero,
-                          constraints: BoxConstraints(
-                            minWidth: m.tapTarget,
-                            minHeight: m.tapTarget,
-                          ),
-                          tooltip: 'Удалить позицию',
-                          icon: const Icon(Icons.close),
-                          onPressed: () => notifier.removeRequestItem(i),
-                        )
-                      else
-                        SizedBox(width: m.tapTarget),
-                    ],
-                  ),
+                    ),
+                    if (i < state.requestItems.length)
+                      IconButton(
+                        key: ValueKey('fixed.item.$i.delete'),
+                        iconSize: m.actionIconSize,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(
+                          minWidth: m.tapTarget,
+                          minHeight: m.tapTarget,
+                        ),
+                        tooltip: 'Удалить позицию',
+                        icon: const Icon(Icons.close),
+                        onPressed: () => notifier.removeRequestItem(i),
+                      )
+                    else
+                      SizedBox(width: m.tapTarget),
+                  ],
                 ),
-                GridBox(
-                  width: m.fixedQtyWidth,
-                  height: heights.data[i],
-                  child: EditableCell(
-                    testId: 'fixed.item.$i.qty',
-                    value: i < state.requestItems.length
-                        ? state.requestItems[i].qty
-                        : '',
-                    numeric: true,
-                    textAlign: TextAlign.center,
-                    onChanged: (v) => notifier.updateRequestItem(i, qty: v),
-                  ),
+              ),
+              GridBox(
+                width: m.fixedQtyWidth,
+                height: heights.data[i],
+                child: EditableCell(
+                  testId: 'fixed.item.$i.qty',
+                  value: i < state.requestItems.length
+                      ? state.requestItems[i].qty
+                      : '',
+                  numeric: true,
+                  textAlign: TextAlign.center,
+                  onChanged: (v) => notifier.updateRequestItem(i, qty: v),
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
         for (var j = 0; j < kMetaRows.length; j++)
           GridBox(
             width: m.fixedWidth,

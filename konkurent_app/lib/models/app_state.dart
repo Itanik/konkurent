@@ -159,6 +159,26 @@ class Offer {
     );
   }
 
+  /// Обратная операция к [vatMoveGrossToNet]: исходное значение (оно хранится
+  /// в колонке «без НДС») возвращается в колонку с НДС **как есть** — без
+  /// деления на ставку, иначе повторные нажатия накапливают НДС.
+  Offer vatMoveNetToGross(double vat) {
+    if (priceDriver == PriceDriver.price) {
+      final net = priceWithoutVat;
+      if (net == null) return this;
+      return copyWith(
+        priceWithVat: net,
+        clearPriceWithoutVat: true,
+      );
+    }
+    final net = sumWithoutVat;
+    if (net == null) return this;
+    return copyWith(
+      sumWithVat: net,
+      clearSumWithoutVat: true,
+    );
+  }
+
   /// Перекидывание введённых значений между базисами при смене флажка
   /// «без НДС» (в обе стороны): [toNet] = перенос «с НДС → без НДС».
   Offer vatMoveValues({required bool toNet}) {
@@ -318,6 +338,7 @@ class SupplierBlock {
     this.sourceFileName,
     this.inn,
     this.withoutVat = false,
+    this.vatMovedToNet = false,
     this.meta = const SupplierMeta(),
     this.offers = const [],
   });
@@ -331,6 +352,10 @@ class SupplierBlock {
 
   /// Счёт без НДС: суммы считаются как суммы без НДС.
   final bool withoutVat;
+
+  /// Кнопка «позиции без НДС» нажата: значения перенесены на «без НДС» и
+  /// колонка с НДС пересчитана; повторное нажатие вернёт как было.
+  final bool vatMovedToNet;
   final SupplierMeta meta;
   final List<Offer> offers;
 
@@ -359,6 +384,7 @@ class SupplierBlock {
     String? inn,
     bool clearInn = false,
     bool? withoutVat,
+    bool? vatMovedToNet,
     SupplierMeta? meta,
     List<Offer>? offers,
   }) {
@@ -368,6 +394,7 @@ class SupplierBlock {
       sourceFileName: sourceFileName ?? this.sourceFileName,
       inn: clearInn ? null : (inn ?? this.inn),
       withoutVat: withoutVat ?? this.withoutVat,
+      vatMovedToNet: vatMovedToNet ?? this.vatMovedToNet,
       meta: meta ?? this.meta,
       offers: offers ?? this.offers,
     );
@@ -379,6 +406,7 @@ class SupplierBlock {
         'sourceFileName': sourceFileName,
         'inn': inn,
         'withoutVat': withoutVat,
+        'vatMovedToNet': vatMovedToNet,
         'meta': meta.toJson(),
         'offers': offers.map((o) => o.toJson()).toList(),
       };
@@ -389,6 +417,7 @@ class SupplierBlock {
         sourceFileName: json['sourceFileName'] as String?,
         inn: json['inn'] as String?,
         withoutVat: json['withoutVat'] as bool? ?? false,
+        vatMovedToNet: json['vatMovedToNet'] as bool? ?? false,
         meta: SupplierMeta.fromJson(json['meta'] as Map<String, dynamic>?),
         offers: ((json['offers'] as List?) ?? [])
             .map((e) => Offer.fromJson(e as Map<String, dynamic>))
