@@ -2,16 +2,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:konkurent_app/models/app_state.dart';
 
 void main() {
+  const vat = 0.22;
+
   group('Offer', () {
     test('цена вычисляется из суммы, не хранится (driver=sum)', () {
       const offer = Offer(id: 'o1', qty: 4, sumWithVat: 100);
-      expect(offer.displayPrice(false), 25);
+      expect(offer.displayPrice(withoutVat: false, vat: vat), 25);
     });
 
     test('цена null при нулевом количестве или отсутствии суммы', () {
-      expect(const Offer(id: 'o1', qty: 0, sumWithVat: 100).displayPrice(false), isNull);
-      expect(const Offer(id: 'o1', qty: 4).displayPrice(false), isNull);
-      expect(const Offer(id: 'o1', sumWithVat: 100).displayPrice(false), isNull);
+      expect(
+          const Offer(id: 'o1', qty: 0, sumWithVat: 100)
+              .displayPrice(withoutVat: false, vat: vat),
+          isNull);
+      expect(
+          const Offer(id: 'o1', qty: 4)
+              .displayPrice(withoutVat: false, vat: vat),
+          isNull);
+      expect(
+          const Offer(id: 'o1', sumWithVat: 100)
+              .displayPrice(withoutVat: false, vat: vat),
+          isNull);
     });
 
     test('copyWith clearQty обнуляет значение', () {
@@ -19,15 +30,16 @@ void main() {
       expect(offer.copyWith(clearQty: true).qty, isNull);
     });
 
-    test('правка суммы пересчитывает сумму без НДС и сбрасывает цену', () {
+    test('правка суммы сбрасывает цену; обратная сторона выводится через НДС',
+        () {
       const offer = Offer(id: 'o1', qty: 4, priceWithVat: 25);
-      final edited = offer.withSumInput(122, withoutVat: false, vat: 0.22);
+      final edited = offer.withSumInput(122, withoutVat: false, vat: vat);
       expect(edited.priceDriver, PriceDriver.sum);
       expect(edited.sumWithVat, 122);
-      expect(edited.sumWithoutVat, closeTo(100, 1e-9));
+      expect(edited.sumWithoutVat, isNull); // выводится на лету
       expect(edited.priceWithVat, isNull);
-      // цена вычисляется из суммы
-      expect(edited.displayPrice(false), closeTo(30.5, 1e-9));
+      expect(edited.displayPrice(withoutVat: false, vat: vat), closeTo(30.5, 1e-9));
+      expect(edited.displaySum(withoutVat: true, vat: vat), closeTo(100, 1e-9));
     });
 
     test('правка цены переключает водителя, сумма вычисляется', () {
@@ -36,42 +48,68 @@ void main() {
       expect(edited.priceDriver, PriceDriver.price);
       expect(edited.priceWithVat, 30);
       expect(edited.sumWithVat, isNull);
-      expect(edited.displaySum(false), closeTo(120, 1e-9));
-      expect(edited.displayPrice(false), 30);
+      expect(edited.displaySum(withoutVat: false, vat: vat), closeTo(120, 1e-9));
+      expect(edited.displayPrice(withoutVat: false, vat: vat), 30);
+    });
+
+    test('обе стороны всегда согласованы через ставку НДС', () {
+      // Введена цена без НДС — с НДС выводится производной.
+      final net = Offer(id: 'o1', qty: 10)
+          .withPriceInput(50, withoutVat: true);
+      expect(net.displaySum(withoutVat: true, vat: vat), 500);
+      expect(net.displaySum(withoutVat: false, vat: vat), closeTo(610, 1e-9));
+
+      // Введена сумма с НДС — без НДС выводится производной.
+      const gross = Offer(id: 'o2', qty: 10, sumWithVat: 1220);
+      expect(gross.displaySum(withoutVat: true, vat: vat), closeTo(1000, 1e-9));
+      expect(
+          gross.displayPrice(withoutVat: true, vat: vat), closeTo(100, 1e-9));
     });
 
     test('смена количества пересчитывает производную величину', () {
       final offer = Offer(id: 'o1', qty: 4, sumWithVat: 100)
           .withPriceInput(30, withoutVat: false);
       final grown = offer.copyWith(qty: 10);
-      expect(grown.displaySum(false), closeTo(300, 1e-9));
+      expect(grown.displaySum(withoutVat: false, vat: vat), closeTo(300, 1e-9));
 
       const sumOffer = Offer(id: 'o2', qty: 4, sumWithVat: 100);
-      expect(sumOffer.copyWith(qty: 10).displayPrice(false), 10);
+      expect(
+          sumOffer.copyWith(qty: 10).displayPrice(withoutVat: false, vat: vat),
+          10);
     });
 
-    test('поставщик без НДС: сумма без НДС первична', () {
+    test('базис «без НДС»: правка суммы пишет в сумму без НДС', () {
       const offer = Offer(id: 'o1', qty: 4);
-      final edited = offer.withSumInput(100, withoutVat: true, vat: 0.22);
+      final edited = offer.withSumInput(100, withoutVat: true, vat: vat);
       expect(edited.sumWithoutVat, 100);
       expect(edited.sumWithVat, isNull);
-      expect(edited.displaySum(true), 100);
+      expect(edited.displaySum(withoutVat: true, vat: vat), 100);
     });
 
-    test('правка скрытой колонки: сумма с НДС пересчитывается', () {
-      const offer = Offer(id: 'o1', qty: 4);
-      final edited = offer.withSumWithoutVatInput(100, vat: 0.22);
-      expect(edited.sumWithoutVat, 100);
-      expect(edited.sumWithVat, closeTo(122, 1e-9));
-      expect(edited.displaySum(false), closeTo(122, 1e-9));
-    });
-
-    test('скрытая колонка выводится из суммы с НДС, если не заполнена', () {
+    test('vatMoveGrossToNet: значения переезжают на «без НДС», с НДС пересчитывается', () {
       const offer = Offer(id: 'o1', qty: 4, sumWithVat: 122);
-      expect(offer.displaySumWithoutVat(false, 0.22), closeTo(100, 1e-9));
-      // распознанная сумма без НДС приоритетнее вычисленной
-      const both = Offer(id: 'o2', sumWithVat: 122, sumWithoutVat: 90);
-      expect(both.displaySumWithoutVat(false, 0.22), 90);
+      final moved = offer.vatMoveGrossToNet(vat);
+      expect(moved.sumWithoutVat, 122);        // «перекинутое» значение
+      expect(moved.sumWithVat, closeTo(148.84, 1e-9)); // 122 × 1.22
+      expect(moved.displaySum(withoutVat: false, vat: vat), closeTo(148.84, 1e-9));
+
+      final priced = Offer(id: 'o2', qty: 4)
+          .withPriceInput(100, withoutVat: false)
+          .vatMoveGrossToNet(vat);
+      expect(priced.priceWithoutVat, 100);
+      expect(priced.priceWithVat, closeTo(122, 1e-9));
+    });
+
+    test('vatMoveValues: перенос значений при смене флажка (в обе стороны)', () {
+      const offer = Offer(id: 'o1', qty: 4, sumWithVat: 100);
+      final toNet = offer.vatMoveValues(toNet: true);
+      expect(toNet.sumWithoutVat, 100);
+      expect(toNet.sumWithVat, isNull);
+      expect(toNet.displaySum(withoutVat: true, vat: vat), 100);
+      // Обратно — значение возвращается без искажения.
+      final back = toNet.vatMoveValues(toNet: false);
+      expect(back.sumWithVat, 100);
+      expect(back.displaySum(withoutVat: false, vat: vat), 100);
     });
 
     test('пустая строка учитывает цены', () {
@@ -99,13 +137,13 @@ void main() {
           Offer(id: 'o3'),
         ],
       );
-      expect(block.total, 350);
-      expect(block.hasAnySum, isTrue);
+      expect(block.total(vat), 350);
+      expect(block.hasAnySum(vat), isTrue);
     });
 
     test('hasAnySum false без сумм', () {
       final block = SupplierBlock(id: 's1', offers: const [Offer(id: 'o1')]);
-      expect(block.hasAnySum, isFalse);
+      expect(block.hasAnySum(vat), isFalse);
     });
 
     test('без НДС: total складывает суммы без НДС и вычисленные из цены', () {
@@ -118,8 +156,8 @@ void main() {
               .withPriceInput(10, withoutVat: true), // 10 * 3 = 30
         ],
       );
-      expect(block.total, closeTo(130, 1e-9));
-      expect(block.hasAnySum, isTrue);
+      expect(block.total(vat), closeTo(130, 1e-9));
+      expect(block.hasAnySum(vat), isTrue);
     });
 
     test('ИНН сохраняется и чистится через copyWith', () {

@@ -15,6 +15,11 @@ import 'grid_box.dart';
 /// Строка предложения одного поставщика. Пустая строка ([offer] == null) тоже
 /// редактируема: ввод создаёт предложение. Перетаскивается вертикально только
 /// внутри своего блока (drag за handle).
+///
+/// Колонки цен/сумм: основная пара — базис блока («без НДС» или с НДС);
+/// вторая пара (цена и сумма другого базиса) показывается тумблером
+/// «Сумма без НДС» в тулбаре и остаётся редактируемой. В режиме сумм
+/// ([sumsOnly]) рендерится только ячейка суммы позиции.
 class OfferRow extends ConsumerWidget {
   const OfferRow({
     super.key,
@@ -24,6 +29,7 @@ class OfferRow extends ConsumerWidget {
     required this.rowHeight,
     required this.withoutVat,
     required this.onReorder,
+    this.sumsOnly = false,
   });
 
   final String supplierId;
@@ -35,10 +41,13 @@ class OfferRow extends ConsumerWidget {
   /// Высота строки (автовысота из rowHeightsProvider).
   final double rowHeight;
 
-  /// Режим поставщика «без НДС».
+  /// Режим поставщика «без НДС»: основная пара колонок — без НДС.
   final bool withoutVat;
 
   final void Function(int fromIndex, int toIndex) onReorder;
+
+  /// Режим сумм: только редактируемая ячейка суммы позиции.
+  final bool sumsOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,11 +55,56 @@ class OfferRow extends ConsumerWidget {
     final notifier = ref.read(appStateProvider.notifier);
     final m = ref.watch(tableMetricsProvider);
     final vat = ref.watch(appConfigProvider).value?.vatRate ?? 0.22;
-    final showSumWithoutVat = ref.watch(showSumWithoutVatProvider);
+    final showSecondary = ref.watch(showSumWithoutVatProvider) && !withoutVat;
     final hasContent = current != null && !current.isEmpty;
     final keyBase = current != null
         ? 'offer.${current.id}'
         : 'offer.empty.$supplierId.$index';
+
+    Widget sumCell({required bool net, required double width}) => GridBox(
+          width: width,
+          height: rowHeight,
+          child: EditableCell(
+            testId: net ? '$keyBase.sumNet' : '$keyBase.sum',
+            value: formatEditable(
+                current?.displaySum(withoutVat: net, vat: vat)),
+            numeric: true,
+            textAlign: TextAlign.right,
+            onChanged: (v) {
+              final n = parseNumber(v);
+              notifier.setOfferAt(
+                supplierId,
+                index,
+                (o) => o.withSumInput(n, withoutVat: net, vat: vat),
+              );
+            },
+          ),
+        );
+
+    Widget priceCell({required bool net, required double width}) => GridBox(
+          width: width,
+          height: rowHeight,
+          child: EditableCell(
+            testId: net ? '$keyBase.priceNet' : '$keyBase.price',
+            value: formatEditable(
+                current?.displayPrice(withoutVat: net, vat: vat)),
+            numeric: true,
+            textAlign: TextAlign.right,
+            hint: 'цена',
+            onChanged: (v) {
+              final n = parseNumber(v);
+              notifier.setOfferAt(
+                supplierId,
+                index,
+                (o) => o.withPriceInput(n, withoutVat: net),
+              );
+            },
+          ),
+        );
+
+    if (sumsOnly) {
+      return sumCell(net: withoutVat, width: m.sumWidth);
+    }
 
     final row = Row(
       mainAxisSize: MainAxisSize.min,
@@ -155,65 +209,12 @@ class OfferRow extends ConsumerWidget {
             ),
           ),
         ),
-        GridBox(
-          width: m.priceWidth,
-          height: rowHeight,
-          child: EditableCell(
-            testId: '$keyBase.price',
-            value: formatEditable(current?.displayPrice(withoutVat)),
-            numeric: true,
-            textAlign: TextAlign.right,
-            hint: 'цена',
-            onChanged: (v) {
-              final n = parseNumber(v);
-              notifier.setOfferAt(
-                supplierId,
-                index,
-                (o) => o.withPriceInput(n, withoutVat: withoutVat),
-              );
-            },
-          ),
-        ),
-        if (showSumWithoutVat)
-          GridBox(
-            width: m.sumWithoutVatWidth,
-            height: rowHeight,
-            child: EditableCell(
-              testId: '$keyBase.sumWithoutVat',
-              value: formatEditable(current?.displaySumWithoutVat(
-                  withoutVat, vat)),
-              numeric: true,
-              textAlign: TextAlign.right,
-              onChanged: (v) {
-                final n = parseNumber(v);
-                notifier.setOfferAt(
-                  supplierId,
-                  index,
-                  (o) => withoutVat
-                      ? o.withSumInput(n, withoutVat: true, vat: vat)
-                      : o.withSumWithoutVatInput(n, vat: vat),
-                );
-              },
-            ),
-          ),
-        GridBox(
-          width: m.sumWidth,
-          height: rowHeight,
-          child: EditableCell(
-            testId: '$keyBase.sum',
-            value: formatEditable(current?.displaySum(withoutVat)),
-            numeric: true,
-            textAlign: TextAlign.right,
-            onChanged: (v) {
-              final n = parseNumber(v);
-              notifier.setOfferAt(
-                supplierId,
-                index,
-                (o) => o.withSumInput(n, withoutVat: withoutVat, vat: vat),
-              );
-            },
-          ),
-        ),
+        priceCell(net: withoutVat, width: m.priceWidth),
+        if (showSecondary) ...[
+          priceCell(net: true, width: m.priceWidth),
+          sumCell(net: true, width: m.sumWithoutVatWidth),
+        ],
+        sumCell(net: withoutVat, width: m.sumWidth),
       ],
     );
 

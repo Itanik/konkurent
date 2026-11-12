@@ -41,6 +41,15 @@ class TableMetrics {
   EdgeInsets get cellPadding =>
       EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale);
 
+  // --- Внутренние ширины текста в ячейках (для замера автовысоты) --------
+  // 18 = горизонтальный padding ячейки (2 × 8) + рамки GridBox (2px).
+  // Эти же числа обязан использовать row_heights.dart: измеренный перенос
+  // должен совпадать с реальным переносом в EditableCell.
+  double get fixedNameTextWidth => fixedNameWidth - tapTarget - 18;
+  double get fixedQtyTextWidth => fixedQtyWidth - 18;
+  double get itemTextWidth => itemWidth - handleGap - tapTarget - 18;
+  double get unitTextWidth => unitWidth - 18;
+
   double get dragIconSize => 18 * scale;
   double get actionIconSize => 16 * scale;
   double get tapTarget => 24 * scale;

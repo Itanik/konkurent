@@ -47,48 +47,44 @@ class Offer {
       priceWithVat == null &&
       priceWithoutVat == null;
 
-  /// Основная сумма строки с учётом режима поставщика «без НДС».
-  /// При [PriceDriver.price] вычисляется из цены.
-  double? displaySum(bool withoutVat) {
+  /// Цена с НДС с учётом производных: хранимая цена дорабатывается
+  /// противоположной через ставку [vat].
+  double? _priceGross(double vat) => priceWithVat ??
+      (priceWithoutVat != null ? priceWithoutVat! * (1 + vat) : null);
+
+  /// Цена без НДС с учётом производных.
+  double? _priceNet(double vat) => priceWithoutVat ??
+      (priceWithVat != null ? priceWithVat! / (1 + vat) : null);
+
+  /// Сумма строки на заданном базисе. Всё, что не введено/не распознано,
+  /// выводится через ставку НДС — обе стороны всегда согласованны.
+  double? displaySum({required bool withoutVat, required double vat}) {
+    final q = qty;
     if (priceDriver == PriceDriver.price) {
-      final q = qty;
-      final pr = withoutVat ? priceWithoutVat : priceWithVat;
+      final pr = withoutVat ? _priceNet(vat) : _priceGross(vat);
       if (pr == null || q == null || q == 0) return null;
       return pr * q;
     }
-    return withoutVat ? sumWithoutVat : sumWithVat;
+    if (withoutVat) {
+      if (sumWithoutVat != null) return sumWithoutVat;
+      return sumWithVat == null ? null : sumWithVat! / (1 + vat);
+    }
+    if (sumWithVat != null) return sumWithVat;
+    return sumWithoutVat == null ? null : sumWithoutVat! * (1 + vat);
   }
 
-  /// Значение скрытой колонки «Сумма, без НДС».
-  double? displaySumWithoutVat(bool withoutVat, double vat) {
-    if (withoutVat) return displaySum(true);
-    if (priceDriver == PriceDriver.price) {
-      final q = qty;
-      final pr = priceWithoutVat ??
-          (priceWithVat != null ? priceWithVat! / (1 + vat) : null);
-      if (pr == null || q == null) return null;
-      return pr * q;
-    }
-    if (sumWithoutVat != null) return sumWithoutVat;
-    final s = sumWithVat;
-    return s == null ? null : s / (1 + vat);
-  }
-
-  /// Цена за единицу — вычисляемая, никогда не хранится при [PriceDriver.sum].
-  double? displayPrice(bool withoutVat) {
-    if (priceDriver == PriceDriver.price) {
-      return withoutVat ? priceWithoutVat : priceWithVat;
-    }
-    final s = displaySum(withoutVat);
+  /// Цена за единицу на заданном базисе (производная от суммы или ввода).
+  double? displayPrice({required bool withoutVat, required double vat}) {
+    final s = displaySum(withoutVat: withoutVat, vat: vat);
     final q = qty;
     if (s == null || q == null || q == 0) return null;
     return s / q;
   }
 
-  /// Правка основной суммы. Переключает водителя на сумму, цена сбрасывается
-  /// (вычисляется на лету). Для поставщика с НДС сумма без НДС выводится
-  /// через [vat].
-  Offer withSumInput(double? value, {required bool withoutVat, required double vat}) {
+  /// Правка суммы на заданном базисе: переключает водителя на сумму, вторая
+  /// сторона выводится производной.
+  Offer withSumInput(double? value,
+      {required bool withoutVat, required double vat}) {
     if (value == null) {
       return copyWith(
         clearSumWithVat: true,
@@ -109,30 +105,14 @@ class Offer {
     }
     return copyWith(
       sumWithVat: value,
-      sumWithoutVat: value / (1 + vat),
+      clearSumWithoutVat: true,
       clearPriceWithVat: true,
       clearPriceWithoutVat: true,
       priceDriver: PriceDriver.sum,
     );
   }
 
-  /// Правка скрытой колонки «Сумма, без НДС» (только у поставщика с НДС):
-  /// сумма с НДС становится первичной и пересчитывается из введённой.
-  Offer withSumWithoutVatInput(double? value, {required double vat}) {
-    if (value == null) {
-      return copyWith(clearSumWithoutVat: true);
-    }
-    return copyWith(
-      sumWithoutVat: value,
-      sumWithVat: value * (1 + vat),
-      clearPriceWithVat: true,
-      clearPriceWithoutVat: true,
-      priceDriver: PriceDriver.sum,
-    );
-  }
-
-  /// Правка цены за единицу. Переключает водителя на цену, суммы сбрасываются
-  /// (вычисляются на лету).
+  /// Правка цены за единицу на заданном базисе: переключает водителя на цену.
   Offer withPriceInput(double? value, {required bool withoutVat}) {
     if (value == null) {
       return copyWith(
@@ -156,6 +136,57 @@ class Offer {
       clearSumWithVat: true,
       clearSumWithoutVat: true,
       priceDriver: PriceDriver.price,
+    );
+  }
+
+  /// Разовая миграция «значения позиций указаны без НДС»: введённые значения
+  /// с НДС переезжают на базис «без НДС», а с НДС пересчитываются
+  /// (= без НДС × (1 + [vat])). Обе колонки остаются видимыми.
+  Offer vatMoveGrossToNet(double vat) {
+    if (priceDriver == PriceDriver.price) {
+      final gross = priceWithVat;
+      if (gross == null) return this;
+      return copyWith(
+        priceWithoutVat: gross,
+        priceWithVat: gross * (1 + vat),
+      );
+    }
+    final gross = sumWithVat;
+    if (gross == null) return this;
+    return copyWith(
+      sumWithoutVat: gross,
+      sumWithVat: gross * (1 + vat),
+    );
+  }
+
+  /// Перекидывание введённых значений между базисами при смене флажка
+  /// «без НДС» (в обе стороны): [toNet] = перенос «с НДС → без НДС».
+  Offer vatMoveValues({required bool toNet}) {
+    if (priceDriver == PriceDriver.price) {
+      if (toNet) {
+        if (priceWithVat == null) return this;
+        return copyWith(
+          priceWithoutVat: priceWithVat,
+          clearPriceWithVat: true,
+        );
+      }
+      if (priceWithoutVat == null) return this;
+      return copyWith(
+        priceWithVat: priceWithoutVat,
+        clearPriceWithoutVat: true,
+      );
+    }
+    if (toNet) {
+      if (sumWithVat == null) return this;
+      return copyWith(
+        sumWithoutVat: sumWithVat,
+        clearSumWithVat: true,
+      );
+    }
+    if (sumWithoutVat == null) return this;
+    return copyWith(
+      sumWithVat: sumWithoutVat,
+      clearSumWithoutVat: true,
     );
   }
 
@@ -303,18 +334,18 @@ class SupplierBlock {
   final SupplierMeta meta;
   final List<Offer> offers;
 
-  /// Итог по поставщику — вычисляется, не хранится. Для «без НДС» складываются
-  /// суммы без НДС (в т.ч. вычисленные из цены).
-  double get total {
+  /// Итог по поставщику — вычисляется, не хранится. На базисе «без НДС»
+  /// складываются суммы без НДС (в т.ч. выведенные через [vat]).
+  double total(double vat) {
     var sum = 0.0;
     for (final o in offers) {
-      sum += o.displaySum(withoutVat) ?? 0;
+      sum += o.displaySum(withoutVat: withoutVat, vat: vat) ?? 0;
     }
     return sum;
   }
 
-  bool get hasAnySum =>
-      offers.any((o) => o.displaySum(withoutVat) != null);
+  bool hasAnySum(double vat) =>
+      offers.any((o) => o.displaySum(withoutVat: withoutVat, vat: vat) != null);
 
   factory SupplierBlock.empty({String displayName = ''}) => SupplierBlock(
         id: newId(),

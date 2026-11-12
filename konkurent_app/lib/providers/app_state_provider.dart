@@ -1,10 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/app_state.dart';
+import '../services/app_config_service.dart';
 
 class AppStateNotifier extends Notifier<AppState> {
   @override
   AppState build() => const AppState();
+
+  double get _vat =>
+      ref.read(appConfigProvider).value?.vatRate ?? 0.22;
 
   void setRequestName(String name) {
     state = state.copyWith(requestName: name);
@@ -48,9 +52,25 @@ class AppStateNotifier extends Notifier<AppState> {
     );
   }
 
-  /// Режим «без НДС»: суммы поставщика считаются как суммы без НДС.
+  /// Флажок «без НДС»: переключает базис блока и перекидывает введённые
+  /// значения в колонки нового базиса (колонки старого скрываются).
   void setSupplierWithoutVat(String id, bool value) {
-    _updateSupplier(id, (s) => s.copyWith(withoutVat: value));
+    _updateSupplier(id, (s) {
+      final offers =
+          s.offers.map((o) => o.vatMoveValues(toNet: value)).toList();
+      return s.copyWith(withoutVat: value, offers: offers);
+    });
+  }
+
+  /// «Позиции в счёте без НДС»: разовый перенос значений с НДС на базис
+  /// «без НДС» и пересчёт колонок с НДС (= без НДС × (1 + ставка)).
+  /// Колонки с НДС остаются видимыми.
+  void recomputeVatFromNet(String id) {
+    final vat = _vat;
+    _updateSupplier(id, (s) {
+      final offers = s.offers.map((o) => o.vatMoveGrossToNet(vat)).toList();
+      return s.copyWith(offers: offers);
+    });
   }
 
   /// [newIndex] — итоговый индекс, куда встаёт перемещаемый блок (drop на
@@ -66,11 +86,12 @@ class AppStateNotifier extends Notifier<AppState> {
   /// Сортировка по итоговой сумме: слева самый выгодный. Поставщики без
   /// заполненных сумм уходят в конец.
   void sortSuppliersByTotal() {
+    final vat = _vat;
     final list = [...state.suppliers];
     final indexed = list.asMap().entries.toList();
     indexed.sort((a, b) {
-      final ka = a.value.hasAnySum ? a.value.total : double.infinity;
-      final kb = b.value.hasAnySum ? b.value.total : double.infinity;
+      final ka = a.value.hasAnySum(vat) ? a.value.total(vat) : double.infinity;
+      final kb = b.value.hasAnySum(vat) ? b.value.total(vat) : double.infinity;
       final cmp = ka.compareTo(kb);
       return cmp != 0 ? cmp : a.key.compareTo(b.key);
     });
