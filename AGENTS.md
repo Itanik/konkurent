@@ -229,7 +229,13 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   (`itemTextWidth` etc. — borders and padding deducted, `-18`). When you add a
   new text column, register its text width in `TableMetrics` and use it in
   `row_heights.dart` with the same deduction, or the measured wrap diverges
-  from the real wrap and the last line clips.
+  from the real wrap and the last line clips. Known debt: the last line still
+  clips for *some* wrapped names (e.g. «Шпилька резьбовая М 12х2000 DIN 975
+  цинк») — the measured wrap occasionally differs from the rendered one by a
+  line. Suspects: ZoomScope `TextScaler` vs painter rounding, `Expanded`
+  width rounding, emoji/letter-spacing nuances. Fix direction: measure with
+  the exact merged display style (inherit bodyMedium via a real `Text`
+  repaint boundary) or render-then-measure with a global key.
 - **View toggles are separate Riverpod notifiers** (`sumsOnlyProvider`,
   `showSumWithoutVatProvider` in `view_preferences_provider.dart`) — session
   state (AppState) must never depend on them; they are not persisted. The
