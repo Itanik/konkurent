@@ -21,6 +21,7 @@ class Offer {
     this.priceWithVat,
     this.priceWithoutVat,
     this.priceDriver = PriceDriver.sum,
+    this.linkedRequestItemId,
   });
 
   final String id;
@@ -34,6 +35,11 @@ class Offer {
   final double? priceWithVat;
   final double? priceWithoutVat;
   final PriceDriver priceDriver;
+
+  /// Привязка к позиции заявки: строка предложения живёт в группе этой
+  /// позиции (ячейки заявки объединены по вертикали). null — непривязанное
+  /// предложение, живёт в зоне без привязки под группами.
+  final String? linkedRequestItemId;
 
   factory Offer.empty() => Offer(id: newId());
 
@@ -224,6 +230,8 @@ class Offer {
     double? priceWithoutVat,
     bool clearPriceWithoutVat = false,
     PriceDriver? priceDriver,
+    String? linkedRequestItemId,
+    bool clearLink = false,
   }) {
     return Offer(
       id: id,
@@ -239,6 +247,8 @@ class Offer {
           ? null
           : (priceWithoutVat ?? this.priceWithoutVat),
       priceDriver: priceDriver ?? this.priceDriver,
+      linkedRequestItemId:
+          clearLink ? null : (linkedRequestItemId ?? this.linkedRequestItemId),
     );
   }
 
@@ -252,6 +262,7 @@ class Offer {
         'priceWithVat': priceWithVat,
         'priceWithoutVat': priceWithoutVat,
         'priceDriver': priceDriver == PriceDriver.price ? 'price' : 'sum',
+        'linkedRequestItemId': linkedRequestItemId,
       };
 
   factory Offer.fromJson(Map<String, dynamic> json) => Offer(
@@ -266,6 +277,7 @@ class Offer {
         priceDriver: json['priceDriver'] == 'price'
             ? PriceDriver.price
             : PriceDriver.sum,
+        linkedRequestItemId: json['linkedRequestItemId'] as String?,
       );
 }
 
@@ -335,7 +347,7 @@ class SupplierBlock {
   const SupplierBlock({
     required this.id,
     this.displayName = '',
-    this.sourceFileName,
+    this.sourceFileNames = const [],
     this.inn,
     this.withoutVat = false,
     this.vatMovedToNet = false,
@@ -345,7 +357,10 @@ class SupplierBlock {
 
   final String id;
   final String displayName;
-  final String? sourceFileName;
+
+  /// Имена файлов-источников (несколько — после слияния счетов одного
+  /// поставщика). Первое — основное.
+  final List<String> sourceFileNames;
 
   /// ИНН поставщика (распознанный из счёта или введённый вручную).
   final String? inn;
@@ -380,7 +395,7 @@ class SupplierBlock {
 
   SupplierBlock copyWith({
     String? displayName,
-    String? sourceFileName,
+    List<String>? sourceFileNames,
     String? inn,
     bool clearInn = false,
     bool? withoutVat,
@@ -391,7 +406,7 @@ class SupplierBlock {
     return SupplierBlock(
       id: id,
       displayName: displayName ?? this.displayName,
-      sourceFileName: sourceFileName ?? this.sourceFileName,
+      sourceFileNames: sourceFileNames ?? this.sourceFileNames,
       inn: clearInn ? null : (inn ?? this.inn),
       withoutVat: withoutVat ?? this.withoutVat,
       vatMovedToNet: vatMovedToNet ?? this.vatMovedToNet,
@@ -403,7 +418,7 @@ class SupplierBlock {
   Map<String, dynamic> toJson() => {
         'id': id,
         'displayName': displayName,
-        'sourceFileName': sourceFileName,
+        'sourceFileNames': sourceFileNames,
         'inn': inn,
         'withoutVat': withoutVat,
         'vatMovedToNet': vatMovedToNet,
@@ -411,40 +426,63 @@ class SupplierBlock {
         'offers': offers.map((o) => o.toJson()).toList(),
       };
 
-  factory SupplierBlock.fromJson(Map<String, dynamic> json) => SupplierBlock(
-        id: (json['id'] as String?) ?? newId(),
-        displayName: (json['displayName'] as String?) ?? '',
-        sourceFileName: json['sourceFileName'] as String?,
-        inn: json['inn'] as String?,
-        withoutVat: json['withoutVat'] as bool? ?? false,
-        vatMovedToNet: json['vatMovedToNet'] as bool? ?? false,
-        meta: SupplierMeta.fromJson(json['meta'] as Map<String, dynamic>?),
-        offers: ((json['offers'] as List?) ?? [])
-            .map((e) => Offer.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+  factory SupplierBlock.fromJson(Map<String, dynamic> json) {
+    final files = (json['sourceFileNames'] as List?)
+            ?.map((e) => e as String)
+            .toList() ??
+        [
+          if (json['sourceFileName'] case final String single) single,
+        ];
+    return SupplierBlock(
+      id: (json['id'] as String?) ?? newId(),
+      displayName: (json['displayName'] as String?) ?? '',
+      sourceFileNames: files,
+      inn: json['inn'] as String?,
+      withoutVat: json['withoutVat'] as bool? ?? false,
+      vatMovedToNet: json['vatMovedToNet'] as bool? ?? false,
+      meta: SupplierMeta.fromJson(json['meta'] as Map<String, dynamic>?),
+      offers: ((json['offers'] as List?) ?? [])
+          .map((e) => Offer.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 }
 
 class RequestItem {
-  const RequestItem({required this.id, this.name = '', this.qty = ''});
+  const RequestItem({
+    required this.id,
+    this.name = '',
+    this.qty = '',
+    this.unit = '',
+  });
 
   final String id;
   final String name;
   final String qty;
 
+  /// Ед.изм позиции — источник подстановки для предложений без единицы.
+  final String unit;
+
   factory RequestItem.empty() => RequestItem(id: newId());
 
-  bool get isEmpty => name.isEmpty && qty.isEmpty;
+  bool get isEmpty => name.isEmpty && qty.isEmpty && unit.isEmpty;
 
-  RequestItem copyWith({String? name, String? qty}) =>
-      RequestItem(id: id, name: name ?? this.name, qty: qty ?? this.qty);
+  RequestItem copyWith({String? name, String? qty, String? unit}) =>
+      RequestItem(
+        id: id,
+        name: name ?? this.name,
+        qty: qty ?? this.qty,
+        unit: unit ?? this.unit,
+      );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'qty': qty};
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'name': name, 'qty': qty, 'unit': unit};
 
   factory RequestItem.fromJson(Map<String, dynamic> json) => RequestItem(
         id: (json['id'] as String?) ?? newId(),
         name: (json['name'] as String?) ?? '',
         qty: (json['qty'] as String?) ?? '',
+        unit: (json['unit'] as String?) ?? '',
       );
 }
 

@@ -189,10 +189,28 @@ class _AppShellState extends ConsumerState<AppShell> {
           await ref.read(appConfigServiceProvider).legalFormsPath(),
     );
     if (!mounted) return;
+    final notifier = ref.read(appStateProvider.notifier);
     if (rec.ok && rec.supplier != null) {
-      ref.read(appStateProvider.notifier).addSupplier(rec.supplier!);
+      // Нормализуем распознанные единицы по словарю (тн/м.п/… → т/м);
+      // несопоставившиеся остаются как есть и подсвечиваются в сетке.
+      final units =
+          ref.read(appConfigProvider).value?.units ?? const UnitsDict({});
+      final supplier = rec.supplier!.copyWith(
+        offers: [
+          for (final o in rec.supplier!.offers)
+            o.unit.isEmpty ? o : (() {
+                  final n = units.normalize(o.unit);
+                  return n == null ? o : o.copyWith(unit: n);
+                })(),
+        ],
+      );
+      notifier.addSupplier(supplier);
+      // Если заявка полностью заполнена (название + кол-во + ед.изм у всех
+      // позиций) — сразу сопоставляем предложения с позициями.
+      final linked = notifier.requestFullyFilled ? notifier.autoLinkOffers() : 0;
       _snack('Добавлен поставщик: '
-          '${rec.supplier!.displayName.isEmpty ? p.basename(path) : rec.supplier!.displayName}');
+          '${supplier.displayName.isEmpty ? p.basename(path) : supplier.displayName}'
+          '${linked > 0 ? ' (сопоставлено позиций: $linked)' : ''}');
     } else {
       _snack('Не удалось распознать ${p.basename(path)}: ${rec.error}');
     }

@@ -10,8 +10,8 @@ class SupplierDrag {
 }
 
 class OfferDrag {
-  const OfferDrag(this.supplierId, this.fromIndex);
+  const OfferDrag(this.supplierId, this.offerId);
 
   final String supplierId;
-  final int fromIndex;
+  final String offerId;
 }

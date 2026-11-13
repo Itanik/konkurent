@@ -184,12 +184,14 @@ class PythonBridge implements FileEngine {
           .map((e) => Offer.fromJson(e as Map<String, dynamic>))
           .toList();
       final inn = (json['inn'] as String?)?.trim();
+      final sourceFile = json['sourceFileName'] as String?;
       return RecognizeOutcome(
         ok: true,
         supplier: SupplierBlock(
           id: newId(),
           displayName: (json['supplierName'] as String?) ?? '',
-          sourceFileName: json['sourceFileName'] as String?,
+          sourceFileNames:
+              sourceFile == null || sourceFile.isEmpty ? [] : [sourceFile],
           inn: inn == null || inn.isEmpty ? null : inn,
           offers: offers.isEmpty ? [Offer.empty()] : offers,
         ),

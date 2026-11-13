@@ -87,7 +87,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final before =
-        tester.getSize(find.byKey(const ValueKey('offerRow.s1.0')));
+        tester.getSize(find.byKey(const ValueKey('offerRow.s1.zone.0')));
 
     await tester.tap(find.byKey(const ValueKey('toolbar.zoomIn')));
     await tester.pumpAndSettle();
@@ -95,7 +95,7 @@ void main() {
     expect(find.text('110 %'), findsOneWidget);
 
     final after =
-        tester.getSize(find.byKey(const ValueKey('offerRow.s1.0')));
+        tester.getSize(find.byKey(const ValueKey('offerRow.s1.zone.0')));
     expect(after.height, greaterThan(before.height));
 
     await tester.tap(find.byKey(const ValueKey('toolbar.zoomReset')));
@@ -235,7 +235,7 @@ void main() {
         supplier: SupplierBlock(
           id: 'recognized',
           displayName: 'Ромашка',
-          sourceFileName: 'invoice.pdf',
+          sourceFileNames: ['invoice.pdf'],
           offers: const [
             Offer(id: 'r1', itemName: 'Болт', qty: 1, sumWithVat: 100),
           ],
@@ -324,40 +324,33 @@ void main() {
     );
   });
 
-  testWidgets('Ctrl+V вставляет список позиций заявки', (tester) async {
+  testWidgets('Enter после правки двигает выделение вниз (Excel)',
+      (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
 
-    await Clipboard.setData(const ClipboardData(
-      text: 'Шпоночный материал 4х4, 5 м.п.\n'
-          'Шпоночный материал 5х5, 5 м.п.\n'
-          'Труба б/ш 27х4, 20 м.п.',
-    ));
-
+    // Ввод в первую позицию и подтверждение: выделение переходит на строку
+    // ниже (зона без привязки, пустая).
     await tapCell(tester, 'fixed.item.0.name');
-    await sendPaste(tester);
-
-    final items = container.read(appStateProvider).requestItems;
-    expect(items, hasLength(3));
-    expect(items[0].name, 'Шпоночный материал 4х4');
-    expect(items[0].qty, '5 м.п.');
-    expect(items[2].name, 'Труба б/ш 27х4');
-    expect(items[2].qty, '20 м.п.');
-  });
-
-  testWidgets('кнопка «Вставить список» заполняет позиции заявки', (tester) async {
-    await pumpApp(tester);
-    final container = containerOf(tester);
-
-    await Clipboard.setData(const ClipboardData(text: 'Позиция A\nПозиция B\nПозиция C'));
-    await tester.tap(find.byKey(const ValueKey('fixed.pasteRequestItems')));
+    await tester.enterText(
+        find.byKey(const ValueKey('fixed.item.0.name.field')), 'Из заявки');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    final items = container.read(appStateProvider).requestItems;
-    expect(items.map((e) => e.name).toList(), ['Позиция A', 'Позиция B', 'Позиция C']);
+    expect(container.read(appStateProvider).requestItems.first.name,
+        'Из заявки');
+
+    // Проба выделения: копируем ячейку под курсором — она уже пустая
+    // (строка ниже), а не та, что редактировали.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(data?.text, '');
   });
 
-  testWidgets('Ctrl+V вставляет список в «Предложено» поставщика',
+  testWidgets('Esc выходит из правки, Ctrl+C копирует выделение',
       (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
@@ -366,18 +359,46 @@ void main() {
           const SupplierBlock(
             id: 's1',
             displayName: 'А',
-            offers: [Offer(id: 'o1', itemName: '')],
+            offers: [Offer(id: 'o1', itemName: 'Болт', qty: 4)],
           ),
         );
     await tester.pumpAndSettle();
 
-    await Clipboard.setData(
-        const ClipboardData(text: 'Болт\nГайка\nШайба'));
     await tapCell(tester, 'offer.o1.item');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(data?.text, 'Болт');
+  });
+
+  testWidgets('Ctrl+V вставляет TSV по ячейкам от выделения', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container
+        .read(appStateProvider.notifier)
+        .addSupplier(const SupplierBlock(id: 's1', displayName: 'А'));
+    await tester.pumpAndSettle();
+
+    await Clipboard.setData(
+        const ClipboardData(text: 'Болт\t10\tшт\nГайка\t5\tшт'));
+    await tapCell(tester, 'offer.empty.s1.zone.0.item');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
     await sendPaste(tester);
 
     final offers = container.read(appStateProvider).suppliers.first.offers;
-    expect(offers.map((o) => o.itemName).toList(), ['Болт', 'Гайка', 'Шайба']);
+    expect(offers, hasLength(2));
+    expect(offers[0].itemName, 'Болт');
+    expect(offers[0].qty, 10);
+    expect(offers[0].unit, 'шт');
+    expect(offers[1].itemName, 'Гайка');
+    expect(offers[1].qty, 5);
   });
 
   testWidgets('ввод в пустую строку создаёт предложение', (tester) async {
@@ -389,18 +410,19 @@ void main() {
         .addSupplier(const SupplierBlock(id: 's1', displayName: 'А'));
     await tester.pumpAndSettle();
 
-    await tapCell(tester, 'offer.empty.s1.0.item');
+    await tapCell(tester, 'offer.empty.s1.zone.0.item');
     await tester.enterText(
-        find.byKey(const ValueKey('offer.empty.s1.0.item.field')), 'Новая');
+        find.byKey(const ValueKey('offer.empty.s1.zone.0.item.field')), 'Новая');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
     final offers = container.read(appStateProvider).suppliers.first.offers;
     expect(offers, hasLength(1));
     expect(offers.first.itemName, 'Новая');
+    expect(offers.first.linkedRequestItemId, isNull);
   });
 
-  testWidgets('drag предложения вниз меняет порядок', (tester) async {
+  testWidgets('drag предложения вниз вставляет перед целью', (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
 
@@ -420,7 +442,7 @@ void main() {
     await dragTo(tester, 'offer.o1.handle', 'offer.o3.handle');
     expect(
       container.read(appStateProvider).suppliers.first.offers.map((o) => o.id),
-      ['o2', 'o3', 'o1'],
+      ['o2', 'o1', 'o3'],
     );
   });
 
@@ -448,7 +470,7 @@ void main() {
     );
   });
 
-  testWidgets('drag заполненной строки на пустую оставляет пробел',
+  testWidgets('drag заполненной строки на запасную — в конец зоны',
       (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
@@ -465,14 +487,64 @@ void main() {
         );
     await tester.pumpAndSettle();
 
-    // Запасная пустая строка — третья (index 2).
-    await dragTo(tester, 'offer.o1.handle', 'offerRow.s1.2');
+    // Запасная пустая строка зоны (0 и 1 заняты o1/o2).
+    await dragTo(tester, 'offer.o1.handle', 'offerRow.s1.zone.2');
 
     final offers = container.read(appStateProvider).suppliers.first.offers;
-    expect(offers, hasLength(3));
-    expect(offers[0].isEmpty, isTrue);
-    expect(offers[1].id, 'o2');
-    expect(offers[2].id, 'o1');
+    expect(offers.map((o) => o.id).toList(), ['o2', 'o1']);
+    expect(offers.last.linkedRequestItemId, isNull);
+  });
+
+  testWidgets('drag предложения на строку группы привязывает к позиции заявки',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    final notifier = container.read(appStateProvider.notifier);
+    notifier.updateRequestItem(0, name: 'Шпилька М12');
+    final rid = container.read(appStateProvider).requestItems.first.id;
+    notifier.addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: 'Шпилька М12 цинк')],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Группа r1 — одна строка в группе, key offerRow.s1.g.<rid>.
+    await dragTo(tester, 'offer.o1.handle', 'offerRow.s1.g.$rid');
+
+    final offer = container.read(appStateProvider).suppliers.first.offers.first;
+    expect(offer.linkedRequestItemId, rid);
+  });
+
+  testWidgets('кнопка «Сопоставить» привязывает непривязанные предложения',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    final notifier = container.read(appStateProvider.notifier);
+    notifier.updateRequestItem(0, name: 'Гайка М12');
+    final rid = container.read(appStateProvider).requestItems.first.id;
+    notifier.addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              Offer(id: 'o1', itemName: 'Гайка М12 DIN934 оцинк.'),
+              Offer(id: 'o2', itemName: 'Что-то совсем другое'),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('toolbar.autoLink')));
+    await tester.pumpAndSettle();
+
+    final offers = container.read(appStateProvider).suppliers.first.offers;
+    expect(offers[0].linkedRequestItemId, rid);
+    expect(offers[1].linkedRequestItemId, isNull);
   });
 
   testWidgets('правка цены пересчитывает сумму', (tester) async {

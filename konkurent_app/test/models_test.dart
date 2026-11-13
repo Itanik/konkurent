@@ -222,7 +222,7 @@ void main() {
           SupplierBlock(
             id: 's1',
             displayName: 'Поставщик А',
-            sourceFileName: 'a.pdf',
+            sourceFileNames: ['a.pdf'],
             meta: const SupplierMeta(contract: 'Д-1', comment: 'ok'),
             offers: const [
               Offer(

@@ -42,7 +42,7 @@ void main() {
         SupplierBlock(
           id: 's1',
           displayName: 'Поставщик А',
-          sourceFileName: 'a.pdf',
+          sourceFileNames: ['a.pdf'],
           meta: const SupplierMeta(contract: 'Д-1', comment: 'ok'),
           offers: const [
             Offer(
@@ -58,7 +58,7 @@ void main() {
         SupplierBlock(
           id: 's2',
           displayName: 'Поставщик Б',
-          sourceFileName: 'b.pdf',
+          sourceFileNames: ['b.pdf'],
           offers: const [
             Offer(id: 'o3', itemName: 'Болт', qty: 10, unit: 'шт', sumWithVat: 990),
             Offer(id: 'o4', itemName: 'Шайба', qty: 20, unit: 'шт', sumWithVat: 200),
@@ -150,7 +150,7 @@ wb.save(r"$other")
               SupplierBlock(
                 id: 's$s',
                 displayName: 'Поставщик $s',
-                sourceFileName: 's$s.pdf',
+                sourceFileNames: ['s$s.pdf'],
                 offers: [
                   for (var i = 0; i < offersPerSupplier[s]; i++)
                     Offer(
@@ -159,6 +159,9 @@ wb.save(r"$other")
                       qty: 1,
                       unit: 'шт',
                       sumWithVat: 100.0 * (i + 1),
+                      // Все предложения привязаны к первой позиции: группа
+                      // получает max строк по поставщикам.
+                      linkedRequestItemId: 'r0',
                     ),
                 ],
               ),
@@ -182,8 +185,9 @@ wb.save(r"$other")
     expect(
       restored.suppliers[1].offers.where((o) => o.itemName.isNotEmpty).length, 5);
 
-    // Геометрия: мета-раздел начинается сразу после данных, и никакие
-    // объединения не накрывают строки данных (регрессия бага с meta_start).
+    // Геометрия новой раскладки: строка 1 заявка, 2 ИНН, 3 файлы (скрыта),
+    // 4 заголовки, 5+ группы, затем мета, «Сумма» и =SUM строкой ниже.
+    // Группа r0 должна занять 5 строк (у «Поставщик 1» их 5).
     final geometry = '''
 import json
 import openpyxl
@@ -195,34 +199,33 @@ data_start = header + 1
 meta = next((r for r in range(data_start, ws.max_row + 1)
              if str(ws.cell(r, 1).value or "").strip() == "Договор:"), None)
 total = next((r for r in range(data_start, ws.max_row + 1)
-              if str(ws.cell(r, 9).value or "").strip() == "Сумма"), None)
+              if str(ws.cell(r, 1).value or "").strip() == "Сумма"), None)
 sum_row = total + 1 if total else None
-sum_formula = ws.cell(sum_row, 9).value if sum_row else None
-overlaps = [str(m) for m in ws.merged_cells.ranges
-            if m.min_row >= data_start and meta and m.min_row < meta and m.min_col >= 4]
-widths = {c: ws.column_dimensions[c].width for c in ("B", "D", "E", "G", "I")}
-print(json.dumps({"data_start": data_start, "meta": meta, "total": total,
+sum_formula = ws.cell(sum_row, 10).value if sum_row else None
+sheets = wb.sheetnames
+hidden_row3 = ws.row_dimensions[3].hidden
+b_merge = [str(m) for m in ws.merged_cells.ranges if str(m).startswith("B5:")]
+print(json.dumps({"header": header, "meta": meta, "total": total,
                   "sum_row": sum_row, "sum_formula": sum_formula,
-                  "overlaps": overlaps, "widths": widths}))
+                  "sheets": sheets, "hidden_row3": hidden_row3,
+                  "b_merge": b_merge}))
 ''';
     final res = await Process.run(python!, ['-c', geometry]);
     expect(res.exitCode, 0, reason: res.stderr.toString());
     final geo = jsonDecode((res.stdout as String).trim()) as Map<String, dynamic>;
 
-    expect(geo['data_start'], 4);
-    expect(geo['meta'], 13); // 4 + 9 позиций заявки
-    expect(geo['total'], 18); // meta + 5 мета-строк
-    expect(geo['sum_row'], 19);
-    expect(geo['sum_formula'], '=SUM(I4:I12)');
-    expect(geo['overlaps'], isEmpty);
-
-    // Ширины: «Название позиции» (B) и «Предложено» (D) фиксированы из config,
-    // остальные подгоняются по контенту (и не превышают предел).
-    final widths = geo['widths'] as Map<String, dynamic>;
-    expect(widths['B'], 42.7);
-    expect(widths['D'], 31.7);
-    expect((widths['E'] as num) <= 60, isTrue);
-    expect((widths['I'] as num) <= 60, isTrue);
+    expect(geo['header'], 4);
+    expect(geo['hidden_row3'], isTrue);
+    expect(geo['sheets'], contains('Суммы'));
+    // Группа первой позиции: 5 строк (max предложений по поставщикам).
+    expect(geo['b_merge'], ['B5:B9']);
+    // r0 — 5 строк, r1..r8 — по 1, все предложения привязаны →
+    // данные 5..17, зона без привязки 18 (1 запасная строка), мета 19.
+    expect(geo['meta'], 19);
+    expect(geo['total'], 24); // meta + 5 мета-строк
+    expect(geo['sum_row'], 25);
+    // Блок поставщика 1: колонки 5..10, сумма — 10-я.
+    expect(geo['sum_formula'], '=SUM(J5:J18)');
   });
 
   test('экспорт введённой цены пишет сумму формулой «цена × кол-во»',
@@ -235,7 +238,7 @@ print(json.dumps({"data_start": data_start, "meta": meta, "total": total,
         SupplierBlock(
           id: 's1',
           displayName: 'Поставщик А',
-          sourceFileName: 'a.pdf',
+          sourceFileNames: ['a.pdf'],
           offers: [
             // Введённая сумма: цена остаётся формулой =сумма/кол-во.
             const Offer(id: 'o1', itemName: 'Болт', qty: 4, unit: 'шт',
@@ -255,27 +258,29 @@ print(json.dumps({"data_start": data_start, "meta": meta, "total": total,
     final export = await bridge.export(state, out);
     expect(export.ok, isTrue, reason: export.error);
 
-    // Блок начинается с 4-й колонки: G = «Ц/ед», I = «Сумма, с НДС».
+    // Новая раскладка: блок с 5-й колонки (4 фиксированные), цена = 5+3,
+    // сумма с НДС = 5+5; оба предложения непривязаны → зона без привязки,
+    // строки 6 и 7 (5 — группа r1).
     final script = '''
 import json
 import openpyxl
 wb = openpyxl.load_workbook(r"$out")
 ws = wb["Заявка"]
 print(json.dumps({
-  "price_sum_driver": ws.cell(4, 7).value,
-  "sum_sum_driver": ws.cell(4, 9).value,
-  "price_price_driver": ws.cell(5, 7).value,
-  "sum_price_driver": ws.cell(5, 9).value,
+  "price_sum_driver": ws.cell(6, 8).value,
+  "sum_sum_driver": ws.cell(6, 10).value,
+  "price_price_driver": ws.cell(7, 8).value,
+  "sum_price_driver": ws.cell(7, 10).value,
 }))
 ''';
     final res = await Process.run(python!, ['-c', script]);
     expect(res.exitCode, 0, reason: res.stderr.toString());
     final cells = jsonDecode((res.stdout as String).trim()) as Map<String, dynamic>;
 
-    expect(cells['price_sum_driver'], '=IFERROR(I4/E4,"")');
+    expect(cells['price_sum_driver'], '=IFERROR(J6/F6,"")');
     expect(cells['sum_sum_driver'], 122);
     expect(cells['price_price_driver'], 25);
-    expect(cells['sum_price_driver'], '=IFERROR(G5*E5,"")');
+    expect(cells['sum_price_driver'], '=IFERROR(H7*F7,"")');
   });
 
   test('recognize извлекает название по юрформе и ИНН из docx',

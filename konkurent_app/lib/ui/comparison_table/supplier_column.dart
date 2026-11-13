@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
+import '../../providers/table_layout_provider.dart';
 import '../../providers/zoom_provider.dart';
 import '../../providers/view_preferences_provider.dart';
 import '../../services/app_config_service.dart';
@@ -12,15 +13,11 @@ import 'drag_types.dart';
 import 'editable_cell.dart';
 import 'grid_box.dart';
 import 'offer_row.dart';
-import 'row_heights.dart';
 
-/// Колонка одного поставщика: заголовок с drag-handle, флажком «без НДС» и
-/// кнопкой «позиции без НДС», подзаголовки, предложения (вертикальный
-/// reorder), мета и итог.
-///
-/// Основная пара колонок цен/сумм следует базису блока (флажок «без НДС»);
-/// вторая пара показывается тумблером «Сумма без НДС» в тулбаре. В режиме
-/// сумм блок схлопывается до колонки сумм — строки позиций остаются.
+/// Колонка одного поставщика: заголовок (drag-handle, флажок «без НДС»,
+/// кнопка пересчёта, ИНН, покрытие n/z), группы позиций заявки со строками
+/// предложений (одиночная строка группы растянута на её высоту), зона без
+/// привязки, мета и итог.
 class SupplierColumn extends ConsumerWidget {
   const SupplierColumn({
     super.key,
@@ -36,57 +33,46 @@ class SupplierColumn extends ConsumerWidget {
     final state = ref.watch(appStateProvider);
     final notifier = ref.read(appStateProvider.notifier);
     final m = ref.watch(tableMetricsProvider);
-    final heights = ref.watch(rowHeightsProvider);
+    final layout = ref.watch(tableLayoutProvider);
     final sumsOnly = ref.watch(sumsOnlyProvider);
     final showSecondary = ref.watch(showSumWithoutVatProvider);
     final vat = ref.watch(appConfigProvider).value?.vatRate ?? 0.22;
 
     final supplier = state.suppliers.firstWhere((s) => s.id == supplierId);
-    final maxRows = heights.data.length;
     final headerStyle = Theme.of(context).textTheme.titleSmall;
     final secondaryVisible = showSecondary && !supplier.withoutVat;
     final width = sumsOnly
         ? m.sumWidth
         : m.supplierWidth(withSumWithoutVat: secondaryVisible);
+    final coverage = supplierCoverage(supplier, state.requestItems);
 
-    if (sumsOnly) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _headerBox(context, m, width, supplier, headerStyle, notifier),
-          _subHeader(context, m, 'Сумма', width, TextAlign.right),
-          for (var i = 0; i < maxRows; i++)
-            OfferRow(
-              key: ValueKey('offerRow.$supplierId.$i'),
-              supplierId: supplierId,
-              index: i,
-              rowHeight: heights.data[i],
-              withoutVat: supplier.withoutVat,
-              offer: i < supplier.offers.length ? supplier.offers[i] : null,
-              sumsOnly: true,
-              onReorder: (_, __) {},
-            ),
-          for (var j = 0; j < kMetaRows.length; j++)
-            GridBox(
-              width: width,
-              height: heights.meta[j],
-              child: EditableCell(
-                testId: 'supplier.$supplierId.meta.${kMetaRows[j].key}',
-                value: supplier.meta.value(kMetaRows[j].key),
-                textAlign: TextAlign.center,
-                onChanged: (v) =>
-                    notifier.setMeta(supplierId, kMetaRows[j].key, v),
-              ),
-            ),
-          _totalBox(context, m, width, supplier, vat, headerStyle),
-        ],
-      );
+    // Дроп предложения на строку: свой поставщик — перепривязка/порядок,
+    // чужой — перенос с привязкой к группе строки.
+    void handleDrop(OfferDrag drag, Offer? target, String? groupRequestId) {
+      if (drag.supplierId == supplierId) {
+        notifier.moveOfferWithinSupplier(
+          supplierId: supplierId,
+          offerId: drag.offerId,
+          requestItemId: groupRequestId,
+          beforeOfferId: target?.id,
+        );
+      } else {
+        notifier.moveOfferToSupplier(
+          fromSupplierId: drag.supplierId,
+          offerId: drag.offerId,
+          toSupplierId: supplierId,
+          requestItemId: groupRequestId,
+          beforeOfferId: target?.id,
+        );
+      }
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _headerBox(context, m, width, supplier, headerStyle, notifier),
+    final children = <Widget>[
+      _headerBox(
+          context, m, width, supplier, coverage, headerStyle, notifier),
+      if (sumsOnly)
+        _subHeader(context, m, 'Сумма', width, TextAlign.right)
+      else ...[
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -105,44 +91,107 @@ class SupplierColumn extends ConsumerWidget {
                 m.sumWidth, TextAlign.right),
           ],
         ),
-        for (var i = 0; i < maxRows; i++)
-          OfferRow(
-            key: ValueKey('offerRow.$supplierId.$i'),
-            supplierId: supplierId,
-            index: i,
-            rowHeight: heights.data[i],
-            withoutVat: supplier.withoutVat,
-            offer: i < supplier.offers.length ? supplier.offers[i] : null,
-            onReorder: (fromIndex, toIndex) {
-              final target = toIndex < supplier.offers.length
-                  ? supplier.offers[toIndex]
-                  : null;
-              if (target == null || target.isEmpty) {
-                // Сброс на пустую строку — оставляем пробел на прежнем месте.
-                notifier.moveOfferToEmpty(supplierId, fromIndex, toIndex);
-              } else {
-                notifier.reorderOffers(supplierId, fromIndex, toIndex);
-              }
-            },
-          ),
-        for (var j = 0; j < kMetaRows.length; j++)
-          GridBox(
-            width: width,
-            height: heights.meta[j],
-            child: EditableCell(
-              testId: 'supplier.$supplierId.meta.${kMetaRows[j].key}',
-              value: supplier.meta.value(kMetaRows[j].key),
-              textAlign: TextAlign.center,
-              onChanged: (v) => notifier.setMeta(supplierId, kMetaRows[j].key, v),
-            ),
-          ),
-        _totalBox(context, m, width, supplier, vat, headerStyle),
       ],
+    ];
+
+    // Группы позиций заявки.
+    for (final g in layout.groups) {
+      final linked = supplier.offers
+          .where((o) => o.linkedRequestItemId == g.item.id)
+          .toList();
+      if (linked.length <= 1) {
+        children.add(OfferRow(
+          key: ValueKey('offerRow.$supplierId.g.${g.item.id}'),
+          supplierId: supplierId,
+          blockIndex: index,
+          rowIndex: g.firstRow,
+          offer: linked.isEmpty ? null : linked.first,
+          rowHeight: g.height,
+          withoutVat: supplier.withoutVat,
+          groupRequestId: g.item.id,
+          sumsOnly: sumsOnly,
+          onOfferDrop: (drag, target) => handleDrop(drag, target, g.item.id),
+        ));
+      } else {
+        for (var j = 0; j < linked.length; j++) {
+          final h = j < g.heights.length - 1
+              ? g.heights[j]
+              : g.heights.sublist(j).fold(0.0, (a, b) => a + b);
+          children.add(OfferRow(
+            key: ValueKey('offerRow.$supplierId.g.${g.item.id}.$j'),
+            supplierId: supplierId,
+            blockIndex: index,
+            rowIndex: g.firstRow + j,
+            offer: linked[j],
+            rowHeight: h,
+            withoutVat: supplier.withoutVat,
+            groupRequestId: g.item.id,
+            sumsOnly: sumsOnly,
+            onOfferDrop: (drag, target) => handleDrop(drag, target, g.item.id),
+          ));
+        }
+      }
+    }
+
+    // Зона без привязки (+ запасная пустая строка).
+    final unlinked = supplier.offers
+        .where((o) => o.linkedRequestItemId == null)
+        .toList();
+    for (var j = 0; j < layout.unlinkedRows; j++) {
+      children.add(OfferRow(
+        key: ValueKey('offerRow.$supplierId.zone.$j'),
+        supplierId: supplierId,
+        blockIndex: index,
+        rowIndex: layout.unlinkedFirstRow + j,
+        zoneIndex: j,
+        offer: j < unlinked.length ? unlinked[j] : null,
+        rowHeight: layout.unlinkedHeights[j],
+        withoutVat: supplier.withoutVat,
+        groupRequestId: null,
+        sumsOnly: sumsOnly,
+        onOfferDrop: (drag, target) => handleDrop(drag, target, null),
+      ));
+    }
+
+    for (var j = 0; j < kMetaRows.length; j++) {
+      children.add(GridBox(
+        width: width,
+        height: layout.metaHeights[j],
+        child: EditableCell(
+          testId: 'supplier.$supplierId.meta.${kMetaRows[j].key}',
+          value: supplier.meta.value(kMetaRows[j].key),
+          textAlign: TextAlign.center,
+          onChanged: (v) => notifier.setMeta(supplierId, kMetaRows[j].key, v),
+        ),
+      ));
+    }
+    children.add(_totalBox(context, m, width, supplier, vat, headerStyle));
+
+    return DragTarget<OfferDrag>(
+      // Дроп «в колонку мимо строк» — в конец зоны без привязки.
+      onWillAcceptWithDetails: (details) =>
+          details.data.supplierId != supplierId,
+      onAcceptWithDetails: (details) => notifier.moveOfferToSupplier(
+        fromSupplierId: details.data.supplierId,
+        offerId: details.data.offerId,
+        toSupplierId: supplierId,
+        requestItemId: null,
+      ),
+      builder: (context, candidates, rejected) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
     );
   }
 
   Widget _headerBox(BuildContext context, TableMetrics m, double width,
-      SupplierBlock supplier, TextStyle? headerStyle, AppStateNotifier notifier) {
+      SupplierBlock supplier,
+      ({int covered, int total}) coverage,
+      TextStyle? headerStyle,
+      AppStateNotifier notifier) {
+    final coverageText = coverage.total > 0
+        ? ' (${coverage.covered}/${coverage.total})'
+        : '';
     return GridBox(
       width: width,
       height: m.headerRowHeight,
@@ -217,7 +266,7 @@ class SupplierColumn extends ConsumerWidget {
                 ),
                 SizedBox(width: 4 * m.scale),
                 Flexible(
-                  child: Text('без НДС',
+                  child: Text('без НДС$coverageText',
                       maxLines: 1,
                       overflow: TextOverflow.clip,
                       style: Theme.of(context).textTheme.labelSmall),
@@ -232,6 +281,22 @@ class SupplierColumn extends ConsumerWidget {
                     child: Icon(Icons.price_change_outlined,
                         size: 16 * m.scale,
                         color: Theme.of(context).colorScheme.primary),
+                  ),
+                ),
+                SizedBox(width: 4 * m.scale),
+                // ИНН: видимое копируемое поле.
+                Expanded(
+                  child: SizedBox(
+                    height: 20 * m.scale,
+                    child: EditableCell(
+                      testId: 'supplier.${supplier.id}.inn',
+                      value: supplier.inn ?? '',
+                      hint: 'ИНН',
+                      numeric: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      onChanged: (v) =>
+                          notifier.setSupplierInn(supplier.id, v),
+                    ),
                   ),
                 ),
                 SizedBox(width: 4 * m.scale),

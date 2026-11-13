@@ -19,7 +19,8 @@ class TableMetrics {
   double get fixedNumberWidth => 52 * scale;
   double get fixedNameWidth => 240 * scale;
   double get fixedQtyWidth => 88 * scale;
-  double get fixedWidth => fixedNumberWidth + fixedNameWidth + fixedQtyWidth;
+  double get fixedWidth =>
+      fixedNumberWidth + fixedNameWidth + fixedQtyWidth + unitWidth;
 
   double get itemWidth => 200 * scale;
   double get qtyWidth => 80 * scale;
