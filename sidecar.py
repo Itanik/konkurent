@@ -231,88 +231,54 @@ def action_export(output):
     except json.JSONDecodeError as e:
         _fail(f"Некорректный JSON состояния: {e}")
 
-    import pandas as pd
     import recog
-    from normalizer import STANDARD_COLUMNS
 
-    request_name = (state.get("requestName") or "").strip() or "Заявка"
-    request_items = [
-        (str(it.get("name", "")), _fmt_num(it.get("qty")))
-        for it in state.get("requestItems", [])
-        if str(it.get("name", "")).strip()
-    ]
-
-    pdf_data_list = []
-    block_names = {}
-    meta_values = {}
-
-    for idx, sup in enumerate(state.get("suppliers", [])):
-        display = (sup.get("displayName") or "").strip()
-        source = (sup.get("sourceFileName") or "").strip()
-        filename = source or f"{display or 'supplier'}.xlsx"
-        if filename in block_names:
-            filename = f"{idx}_{filename}"
-
-        rows = []
-        bez_nds = []
-        prices = []
-        for i, off in enumerate(sup.get("offers", [])):
-            qty_num = _num_or_none(off.get("qty"))
-            price_w = _num_or_none(off.get("priceWithVat"))
-            price_wo = _num_or_none(off.get("priceWithoutVat"))
-            price_val = None
-            sum_val = _fmt_num(off.get("sumWithVat"))
-            bez = _fmt_num(off.get("sumWithoutVat"))
-
-            # Цена, введённая вручную (priceDriver == "price"): пишем её
-            # значением, сумму движок считает формулой «цена × кол-во».
-            if (off.get("priceDriver") or "sum") == "price" and (
-                price_w is not None or price_wo is not None
-            ):
-                price_val = price_w if price_w is not None else price_wo
-                sum_val = ""
-                if price_wo is not None and qty_num is not None:
-                    bez = price_wo * qty_num
-
-            rows.append([
-                str(i + 1),
-                off.get("itemName") or "",
-                _fmt_num(off.get("qty")),
-                off.get("unit") or "",
-                "",
-                sum_val,
-            ])
-            bez_nds.append(bez)
-            prices.append(price_val)
-
-        df = pd.DataFrame(
-            rows,
-            columns=pd.MultiIndex.from_product([[filename], STANDARD_COLUMNS]),
-        )
-        orig = {col: col for col in STANDARD_COLUMNS}
-        pdf_data_list.append((df, orig, bez_nds, prices))
-
-        block_names[filename] = display or filename
+    # Нормализация state: оставляем только то, что понимает движок.
+    clean = {
+        "requestName": (state.get("requestName") or "").strip() or "Заявка",
+        "requestItems": [
+            {
+                "id": it.get("id"),
+                "name": str(it.get("name", "")).strip(),
+                "qty": str(it.get("qty", "")).strip(),
+                "unit": str(it.get("unit", "")).strip(),
+            }
+            for it in state.get("requestItems", [])
+            if str(it.get("name", "")).strip()
+        ],
+        "suppliers": [],
+        "bestVariants": state.get("bestVariants") or [],
+    }
+    for sup in state.get("suppliers", []):
         meta = sup.get("meta") or {}
-        meta_values[filename] = {
-            META_KEY_TO_LABEL[key]: meta.get(key, "")
-            for key in META_LABEL_TO_KEY.values()
-        }
+        clean["suppliers"].append({
+            "id": sup.get("id"),
+            "displayName": (sup.get("displayName") or "").strip(),
+            "inn": sup.get("inn"),
+            "withoutVat": bool(sup.get("withoutVat")),
+            "sourceFileNames": (sup.get("sourceFileNames")
+                                or ([sup["sourceFileName"]]
+                                    if sup.get("sourceFileName") else [])),
+            "meta": {k: str(meta.get(k, "") or "") for k in META_KEY_TO_LABEL},
+            "offers": [
+                {
+                    "itemName": off.get("itemName") or "",
+                    "qty": _num_or_none(off.get("qty")),
+                    "unit": off.get("unit") or "",
+                    "sumWithVat": _num_or_none(off.get("sumWithVat")),
+                    "sumWithoutVat": _num_or_none(off.get("sumWithoutVat")),
+                    "priceWithVat": _num_or_none(off.get("priceWithVat")),
+                    "priceWithoutVat": _num_or_none(off.get("priceWithoutVat")),
+                    "priceDriver": off.get("priceDriver") or "sum",
+                    "linkedRequestItemId": off.get("linkedRequestItemId"),
+                }
+                for off in sup.get("offers", [])
+            ],
+        })
 
     output = os.path.abspath(output)
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-
     with _stdout_to_stderr():
-        recog.fill_template(
-            pdf_data_list,
-            os.path.dirname(output),
-            SCRIPT_DIR,
-            output_path=output,
-            block_names=block_names,
-            request_name=request_name,
-            request_items=request_items or None,
-            meta_values=meta_values,
-        )
+        recog.build_comparison_xlsx(clean, SCRIPT_DIR, output)
 
     _emit({"status": "ok", "path": output})
 
@@ -326,11 +292,13 @@ def action_import(path):
     config = load_config()
     sheet_name = config["sheet_name"]
 
-    wb = load_workbook(path, data_only=True)
-    if sheet_name not in wb.sheetnames:
+    # Двойное чтение: data_only=True даёт кэшированные значения формул,
+    # data_only=False — сами формулы и объединения.
+    wb_vals = load_workbook(path, data_only=True)
+    if sheet_name not in wb_vals.sheetnames:
         _emit({"status": "foreign"})
         return
-    ws = wb[sheet_name]
+    ws = wb_vals[sheet_name]
 
     a1 = ws.cell(row=1, column=1).value
     if not (isinstance(a1, str) and a1.strip().startswith("Заявка:")):
@@ -338,6 +306,8 @@ def action_import(path):
         return
 
     request_name = a1.split(":", 1)[1].strip()
+    wb = load_workbook(path, data_only=False)
+    wsf = wb[sheet_name]
 
     n_fixed = len(config["fixed_columns"])
     block_size = len(config["block_columns"])
@@ -353,7 +323,8 @@ def action_import(path):
         _fail("Не найдена строка заголовков в файле")
 
     data_start = header_row + 1
-    hidden_row = header_row - 1 if header_row >= 3 else None
+    inn_row = 2
+    files_row = 3
 
     meta_start = None
     if meta_labels:
@@ -373,30 +344,96 @@ def action_import(path):
         blocks.append({"start": col, "name": _cell_str(name)})
         col += block_size
 
+    # Группы позиций заявки: вертикальное объединение в колонке 2 (название).
+    group_ranges = []  # (first_row, last_row)
+    for mc in wsf.merged_cells.ranges:
+        if mc.min_col == 2 and mc.max_col == 2 and mc.min_row >= data_start \
+                and mc.max_row < meta_start:
+            group_ranges.append((mc.min_row, mc.max_row))
+    group_ranges.sort()
+
+    # Сопоставление строкам групп id позиции заявки: import не сохраняет
+    # исходные uuid — генерируем при чтении по порядку групп.
+    import uuid as _uuid
+
+    def new_id():
+        return str(_uuid.uuid4())
+
+    request_items = []
+    group_ids = {}  # first_row -> id
+    cursor = data_start
+    for first, last in group_ranges:
+        if first < cursor:
+            continue
+        name = _cell_str(ws.cell(row=first, column=2).value)
+        qty = _cell_str(ws.cell(row=first, column=3).value)
+        unit = _cell_str(ws.cell(row=first, column=4).value)
+        rid = new_id()
+        group_ids[first] = rid
+        request_items.append({"id": rid, "name": name, "qty": qty,
+                              "unit": unit})
+        cursor = last + 1
+    # Позиции вне групп (файлы старого формата или без merge).
+    covered = set()
+    for first, last in group_ranges:
+        covered.update(range(first, last + 1))
+    for r in range(data_start, meta_start):
+        if r in covered:
+            continue
+        name = _cell_str(ws.cell(row=r, column=2).value)
+        if not name:
+            continue
+        rid = new_id()
+        group_ids[r] = rid
+        request_items.append({
+            "id": rid,
+            "name": name,
+            "qty": _cell_str(ws.cell(row=r, column=3).value),
+            "unit": _cell_str(ws.cell(row=r, column=4).value),
+        })
+
+    def row_group_id(r):
+        """id группы для строки r (по диапазонам merge)."""
+        for first, last in group_ranges:
+            if first <= r <= last:
+                return group_ids.get(first)
+        return group_ids.get(r)
+
     suppliers = []
     for b in blocks:
         cs = b["start"]
-        source = None
-        if hidden_row:
-            v = ws.cell(row=hidden_row, column=cs).value
-            if v not in (None, ""):
-                source = _cell_str(v)
+        # Название блока без хвоста «(n/z)».
+        display = b["name"]
+        if display.endswith(")") and " (" in display:
+            display = display.rsplit(" (", 1)[0]
+
+        files_raw = _cell_str(ws.cell(row=files_row, column=cs).value)
+        files = [f.strip() for f in files_raw.split(";") if f.strip()] \
+            if files_raw else []
 
         offers = []
         for r in range(data_start, meta_start):
             item = ws.cell(row=r, column=cs).value
             qty = ws.cell(row=r, column=cs + 1).value
             unit = ws.cell(row=r, column=cs + 2).value
+            # ws — data_only книга: формулы дают кэшированные значения.
             sum_wo = ws.cell(row=r, column=cs + 4).value
-            sum_w = ws.cell(row=r, column=cs + 5).value
-            if item in (None, "") and qty in (None, "") and sum_w in (None, ""):
+            sum_w_val = ws.cell(row=r, column=cs + 5).value
+            if item in (None, "") and qty in (None, "") \
+                    and sum_w_val in (None, ""):
                 continue
+            is_price_value = price_driver_is_value(wsf, r, cs + 3)
+            price = _num_or_none(wsf.cell(row=r, column=cs + 3).value) \
+                if is_price_value else None
             offers.append({
                 "itemName": _cell_str(item),
                 "qty": _num_or_none(qty),
                 "unit": _cell_str(unit),
-                "sumWithVat": _num_or_none(sum_w),
+                "sumWithVat": _num_or_none(sum_w_val),
                 "sumWithoutVat": _num_or_none(sum_wo),
+                "priceWithVat": price,
+                "priceDriver": "price" if is_price_value else "sum",
+                "linkedRequestItemId": row_group_id(r),
             })
 
         meta = {}
@@ -407,21 +444,13 @@ def action_import(path):
                 meta[key] = _cell_str(v)
 
         suppliers.append({
-            "displayName": b["name"],
-            "sourceFileName": source,
+            "id": new_id(),
+            "displayName": display,
+            "inn": _cell_str(ws.cell(row=inn_row, column=cs).value) or None,
+            "sourceFileNames": files,
             "offers": offers,
             "meta": meta,
         })
-
-    request_items = []
-    for r in range(data_start, meta_start):
-        name = ws.cell(row=r, column=2).value
-        qty = ws.cell(row=r, column=3).value
-        if name not in (None, ""):
-            request_items.append({
-                "name": _cell_str(name),
-                "qty": _cell_str(qty),
-            })
 
     _emit({
         "status": "ok",
@@ -429,6 +458,12 @@ def action_import(path):
         "requestItems": request_items,
         "suppliers": suppliers,
     })
+
+
+def price_driver_is_value(wsf, row, col_offset_plus_3):
+    """Цена — введённое значение (driver=price), если это не формула."""
+    v = wsf.cell(row=row, column=col_offset_plus_3).value
+    return not (isinstance(v, str) and v.startswith("="))
 
 
 def main():

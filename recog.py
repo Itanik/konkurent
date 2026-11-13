@@ -630,3 +630,374 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------
+# Экспорт для Flutter-sidecar: раскладка вычисляется заранее (группы позиций
+# заявки с вертикальными объединениями, строка ИНН, скрытая строка файлов,
+# лист «Суммы»), вставки строк и компенсации merge не нужны.
+# ---------------------------------------------------------------------------
+
+def _thin_border():
+    return Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+
+
+def build_comparison_xlsx(
+    state,
+    script_dir,
+    output_path,
+    request_name="",
+):
+    """Строит книгу по AppState из sidecar (см. sidecar.action_export).
+
+    state: {"requestName", "requestItems": [{name, qty, unit}],
+            "suppliers": [{displayName, sourceFileNames, inn, withoutVat,
+                           meta{...},
+                           offers: [{itemName, qty, unit, sumWithVat,
+                                     sumWithoutVat, priceWithVat,
+                                     priceWithoutVat, priceDriver,
+                                     linkedRequestItemId}]}]}
+    """
+    config = load_config(os.path.join(script_dir, "config.json"))
+    n_fixed = config["_fixed_len"]
+    block_size = config["_block_size"]
+    meta_cfg = config["row"]["meta"]
+
+    font_name = config["defaults"].get("font_name", "Calibri")
+    font_size = config["defaults"].get("font_size", 14)
+    bold_font = Font(name=font_name, size=font_size, bold=True)
+    normal_font = Font(name=font_name, size=font_size)
+    thin = _thin_border()
+    wrap = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    center_wrap = Alignment(horizontal="center", vertical="center",
+                            wrap_text=True)
+
+    request_name = request_name or state.get("requestName") or "Заявка"
+    items = state.get("requestItems", [])
+    suppliers = state.get("suppliers", [])
+
+    # --- структура строк -------------------------------------------------------
+    # 1 имя заявки / названия блоков+покрытие, 2 ИНН, 3 скрытые файлы,
+    # 4 заголовки, далее группы позиций, зона без привязки, мета, «Сумма»,
+    # строка =SUM, строки вариантов.
+    groups = []  # (item, rows_count)
+    for it in items:
+        name = str(it.get("name", "")).strip()
+        if not name:
+            continue
+        max_rows = 1
+        rid = it.get("id")
+        for sup in suppliers:
+            linked = [o for o in sup.get("offers", [])
+                      if o.get("linkedRequestItemId") == rid]
+            if len(linked) > max_rows:
+                max_rows = len(linked)
+        groups.append((it, max_rows))
+
+    unlinked_rows = 1
+    for sup in suppliers:
+        n = len([o for o in sup.get("offers", [])
+                 if not o.get("linkedRequestItemId")])
+        unlinked_rows = max(unlinked_rows, n + 1)
+
+    header_row = 4
+    data_start = 5
+    group_rows = sum(r for _, r in groups)
+    unlinked_start = data_start + group_rows
+    meta_start = unlinked_start + unlinked_rows
+    total_row = meta_start + len(meta_cfg)
+    sum_row = total_row + 1
+    variants_start = sum_row + 1
+
+    variants = state.get("bestVariants") or []
+    last_row = variants_start + len(variants) - 1
+
+    wb = Workbook()
+
+    # --- лист «Заявка» ---------------------------------------------------------
+    ws = wb.active
+    ws.title = config["sheet_name"]
+
+    def put(row, col, value, font=None, align=None, border=True, fmt=None):
+        cell = ws.cell(row=row, column=col)
+        if value is not None:
+            cell.value = value
+        if font:
+            cell.font = font
+        if align:
+            cell.alignment = align
+        if border:
+            cell.border = thin
+        if fmt:
+            cell.number_format = fmt
+        return cell
+
+    # Строка 1: заявка + названия блоков (+ покрытие).
+    put(1, 1, f"Заявка: {request_name}", bold_font,
+        Alignment(horizontal="center", vertical="center"))
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_fixed)
+
+    # Строка 2: ИНН (метка в фикс. части).
+    put(2, 1, "ИНН поставщика:", normal_font,
+        Alignment(horizontal="center", vertical="center"))
+
+    for b_idx, sup in enumerate(suppliers):
+        sc = n_fixed + b_idx * block_size + 1
+        ec = sc + block_size - 1
+        display = str(sup.get("displayName", "")).strip() or "Поставщик"
+        rid = sup.get("id")
+        items_count = len(groups)
+        if items_count:
+            req = state.get("requestItems", [])
+            covered = 0
+            for it, _r in groups:
+                linked = [o for o in sup.get("offers", [])
+                          if o.get("linkedRequestItemId") == it.get("id")]
+                qty = None
+                try:
+                    qty = float(str(it.get("qty", "")).replace(",", ".")
+                                .replace(" ", "") or "nan")
+                except (ValueError, TypeError):
+                    qty = None
+                got = sum(float(o.get("qty") or 0) for o in linked)
+                if linked and (qty is None or qty <= 0 or got >= qty):
+                    covered += 1
+            display = f"{display} ({covered}/{items_count})"
+        put(1, sc, display, bold_font, center_wrap)
+        ws.merge_cells(start_row=1, start_column=sc, end_row=1, end_column=ec)
+
+        inn = str(sup.get("inn") or "").strip()
+        put(2, sc, inn or None, normal_font, center_wrap)
+        ws.merge_cells(start_row=2, start_column=sc, end_row=2, end_column=ec)
+
+        files = sup.get("sourceFileNames") or []
+        if files:
+            put(3, sc, "; ".join(str(f) for f in files), normal_font)
+            ws.merge_cells(start_row=3, start_column=sc, end_row=3,
+                           end_column=ec)
+
+    ws.row_dimensions[3].hidden = True
+
+    # Строка 4: заголовки.
+    for c, col_cfg in enumerate(config["fixed_columns"], start=1):
+        put(header_row, c, col_cfg["header"], bold_font, center_wrap)
+    for b_idx in range(len(suppliers)):
+        sc = n_fixed + b_idx * block_size + 1
+        for c, col_cfg in enumerate(config["block_columns"]):
+            put(header_row, sc + c, col_cfg["header"], bold_font, center_wrap)
+
+    # Ширины колонок.
+    for c, col_cfg in enumerate(config["fixed_columns"], start=1):
+        ws.column_dimensions[get_column_letter(c)].width = col_cfg["width"]
+    for b_idx in range(len(suppliers)):
+        sc = n_fixed + b_idx * block_size + 1
+        for c, col_cfg in enumerate(config["block_columns"]):
+            ws.column_dimensions[get_column_letter(sc + c)].width = \
+                col_cfg["width"]
+
+    # Группы: ячейки заявки объединены на высоту группы; предложения
+    # поставщика построчно; поставщик с одним предложением — merge на группу.
+    row = data_start
+    for it, rows_n in groups:
+        rid = it.get("id")
+        put(row, 1, None)
+        for c, key in ((2, "name"), (3, "qty"), (4, "unit")):
+            put(row, c, str(it.get(key, "") or "") or None, normal_font,
+                wrap if key == "name" else center_wrap)
+        for c in range(1, n_fixed + 1):
+            ws.merge_cells(start_row=row, start_column=c,
+                           end_row=row + rows_n - 1, end_column=c)
+
+        for b_idx, sup in enumerate(suppliers):
+            sc = n_fixed + b_idx * block_size + 1
+            offers = [o for o in sup.get("offers", [])
+                      if o.get("linkedRequestItemId") == rid][:rows_n]
+            if len(offers) <= 1:
+                _write_offer_rows(ws, sc, row, rows_n, offers or [None],
+                                  normal_font, thin, put, config)
+                if not offers:
+                    ws.merge_cells(start_row=row, start_column=sc,
+                                   end_row=row + rows_n - 1, end_column=sc)
+            else:
+                for j, off in enumerate(offers):
+                    _write_offer_rows(ws, sc, row + j, 1, [off],
+                                      normal_font, thin, put, config)
+
+        row += rows_n
+
+    # Зона без привязки: непривязанные предложения + пустые строки.
+    for j in range(unlinked_rows):
+        for b_idx, sup in enumerate(suppliers):
+            sc = n_fixed + b_idx * block_size + 1
+            unlinked = [o for o in sup.get("offers", [])
+                        if not o.get("linkedRequestItemId")]
+            off = unlinked[j] if j < len(unlinked) else None
+            _write_offer_rows(ws, sc, unlinked_start + j, 1,
+                              [off] if off else [None],
+                              normal_font, thin, put, config)
+
+    # Мета.
+    meta_font = Font(name=font_name, size=font_size)
+    for i, m in enumerate(meta_cfg):
+        r = meta_start + i
+        put(r, 1, m["label"], meta_font, center_wrap)
+        ws.merge_cells(start_row=r, start_column=1, end_row=r,
+                       end_column=n_fixed)
+        for b_idx, sup in enumerate(suppliers):
+            sc = n_fixed + b_idx * block_size + 1
+            ec = sc + block_size - 1
+            meta = sup.get("meta") or {}
+            val = str(meta.get(_meta_key(m["label"]), "") or "")
+            put(r, sc, val or None, meta_font, center_wrap)
+            ws.merge_cells(start_row=r, start_column=sc, end_row=r,
+                           end_column=ec)
+
+    # Итог: метка + =SUM строкой ниже (сохраняем старую конвенцию).
+    put(total_row, 1, "Сумма", bold_font,
+        Alignment(horizontal="center", vertical="center"))
+    ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row,
+                   end_column=n_fixed)
+    for b_idx, sup in enumerate(suppliers):
+        sc = n_fixed + b_idx * block_size + 1
+        ec = sc + block_size - 1
+        sum_col_letter = get_column_letter(ec)
+        put(total_row, sc, "Сумма", bold_font, center_wrap)
+        ws.merge_cells(start_row=total_row, start_column=sc, end_row=total_row,
+                       end_column=ec)
+        cell = put(sum_row, ec,
+                   f"=SUM({sum_col_letter}{data_start}:"
+                   f"{sum_col_letter}{meta_start - 1})",
+                   bold_font, border=True, fmt="#,##0.00")
+        cell.value = f"=SUM({sum_col_letter}{data_start}:{sum_col_letter}{meta_start - 1})"
+
+    # Скрытая колонка «Сумма, без НДС».
+    for b_idx in range(len(suppliers)):
+        sc = n_fixed + b_idx * block_size + 1
+        for c, col_cfg in enumerate(config["block_columns"]):
+            if col_cfg.get("hidden"):
+                ws.column_dimensions[get_column_letter(sc + c)].hidden = True
+
+    # Варианты закупки (если переданы): название в col 2, сумма формулой
+    # в объединённых 3..4.
+    for i, v in enumerate(variants):
+        r = variants_start + i
+        label = str(v.get("label", ""))
+        cells = v.get("cells") or []  # [[col, row], ...] абсолютные координаты
+        formula = "=" + "+".join(
+            f"{get_column_letter(c)}{r0}" for c, r0 in cells) if cells else None
+        put(r, 2, label, bold_font, wrap)
+        if formula:
+            put(r, 3, formula, bold_font, border=True, fmt="#,##0.00")
+            ws.merge_cells(start_row=r, start_column=3, end_row=r,
+                           end_column=4)
+
+    ws.freeze_panes = ws.cell(row=data_start, column=n_fixed + 1)
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    # --- лист «Суммы»: копия «Заявки» со скрытыми колонками -------------------
+    ws2 = wb.copy_worksheet(ws)
+    ws2.title = "Суммы"
+    for b_idx in range(len(suppliers)):
+        sc = n_fixed + b_idx * block_size + 1
+        sum_col = sc + block_size - 1
+        for c in range(sc, sum_col):
+            ws2.column_dimensions[get_column_letter(c)].hidden = True
+    ws2.sheet_view.tabSelected = False
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    wb.save(output_path)
+    print(f"Готово! Конкурентная таблица сохранена как '{output_path}'")
+    return output_path
+
+
+_META_LABEL_TO_KEY = {
+    "Договор:": "contract",
+    "Сроки поставки:": "deliveryTime",
+    "Доставка:": "delivery",
+    "Условия оплаты:": "paymentTerms",
+    "Комментарий:": "comment",
+}
+
+
+def _meta_key(label):
+    return _META_LABEL_TO_KEY.get(label, "")
+
+
+def _write_offer_rows(ws, block_start, row, span, offers, normal_font, thin,
+                      put, config):
+    """Записывает 1..span строк предложений блока; пустая строка — рамки.
+
+    При span>1 и одном предложении ячейки не объединяются здесь (merge делает
+    вызывающий код), но рамки проставляются на весь диапазон до объединения.
+    """
+    n = len(offers)
+    for j in range(span):
+        r = row + j
+        off = offers[j] if j < n else None
+        _write_offer_row(ws, block_start, r, off, normal_font, thin, put,
+                         config)
+
+
+def _write_offer_row(ws, block_start, row, offer, normal_font, thin, put,
+                     config):
+    bez_nds_col = None
+    price_col = None
+    sum_col = None
+    for c, col_cfg in enumerate(config["block_columns"]):
+        header = col_cfg["header"]
+        if col_cfg.get("hidden"):
+            bez_nds_col = block_start + c
+        if header.startswith("Ц/ед"):
+            price_col = block_start + c
+        if header.startswith("Сумма, с"):
+            sum_col = block_start + c
+    qty_col = block_start + 1
+
+    if not offer:
+        for c in range(block_start, block_start + len(config["block_columns"])):
+            put(row, c, None)
+        return
+
+    put(row, block_start, str(offer.get("itemName", "")) or None,
+        normal_font, Alignment(horizontal="left", vertical="top",
+                               wrap_text=True))
+    qty = offer.get("qty")
+    put(row, qty_col, qty, normal_font,
+        Alignment(horizontal="center", vertical="center"), fmt="#,##0.00")
+    put(row, block_start + 2, str(offer.get("unit", "")) or None,
+        normal_font, Alignment(horizontal="center", vertical="center"))
+
+    price_driver = offer.get("priceDriver") or "sum"
+    price_w = offer.get("priceWithVat")
+    price_wo = offer.get("priceWithoutVat")
+    sum_letter = get_column_letter(sum_col)
+    qty_letter = get_column_letter(qty_col)
+    price_letter = get_column_letter(price_col)
+
+    if price_driver == "price" and (price_w is not None or price_wo is not None):
+        price_val = price_w if price_w is not None else price_wo
+        put(row, price_col, price_val, normal_font,
+            Alignment(horizontal="right", vertical="center"),
+            fmt="#,##0.00")
+        put(row, sum_col,
+            f'=IFERROR({price_letter}{row}*{qty_letter}{row},"")',
+            normal_font, Alignment(horizontal="right", vertical="center"),
+            fmt="#,##0.00")
+    else:
+        put(row, price_col,
+            f'=IFERROR({sum_letter}{row}/{qty_letter}{row},"")',
+            normal_font, Alignment(horizontal="right", vertical="center"),
+            fmt="#,##0.00")
+        put(row, sum_col, offer.get("sumWithVat"), normal_font,
+            Alignment(horizontal="right", vertical="center"),
+            fmt="#,##0.00")
+
+    if bez_nds_col:
+        put(row, bez_nds_col, offer.get("sumWithoutVat"), normal_font,
+            Alignment(horizontal="right", vertical="center"),
+            fmt="#,##0.00")

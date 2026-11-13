@@ -3,7 +3,8 @@
   "fixed_columns": [
     { "header": "№ поз",     "width": 5.9 },
     { "header": "Название позиции", "width": 42.7 },
-    { "header": "Кол-во",    "width": 10.6 }
+    { "header": "Кол-во",    "width": 10.6 },
+    { "header": "Ед.изм",    "width": 8.0 }
   ],
   "block_columns": [
     { "header": "Предложено",       "width": 31.7 },
