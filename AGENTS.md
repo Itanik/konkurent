@@ -138,8 +138,17 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
 - **`config.json` drives all geometry.** `load_config` derives `_block_size` from
   `len(block_columns)` and `_fixed_len` from `len(fixed_columns)`; there is no
   `block_size` key. Supplier blocks are laid out at a hardcoded stride of
-  `block_size` starting after the fixed columns. Adding/reordering/inserting a block
-  column (e.g. unhiding `Сумма, без НДС`) shifts every column index in the file.
+  `block_size` starting after the fixed columns (fixed part is now 4 columns:
+  №, Название, Кол-во, Ед.изм → block 1 starts at column 5). Adding/reordering
+  a block column shifts every column index in the file.
+- **Wave-2 export path is `build_comparison_xlsx`** (bottom of recog.py), called
+  by sidecar export with the cleaned AppState. The whole layout (rows 1 request
+  name / 2 INN / 3 hidden files / 4 headers, request-item groups with vertical
+  merges, unlinked zone, meta, total+SUM, variants) is computed BEFORE any
+  cell is written — no `insert_rows`, no merge compensation. The old
+  `fill_template` path remains only for the headless CLI (`recog.py <folder>`).
+  Sheet «Суммы» is `wb.copy_worksheet` with all block columns hidden except
+  the per-block sum column.
 - **openpyxl's `ws.insert_rows()` does NOT move merged ranges.** Verified: inserting a
   row at 2 moves values from row 3 to row 4 while leaving the merge at `A3:C3`.
   `fill_template` compensates by deleting stale ranges and re-merging
@@ -210,6 +219,29 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   `ModuleNotFoundError: No module named '<hash>_mypyc'`. The CI sidecar step adds
   it explicitly with `--add-binary "$(ls site-packages/*__mypyc*.<so|pyd>):."`;
   a manual sidecar build needs the same flag. Keep it.
+- **The grid is address-driven, not index-driven.** `tableLayoutProvider`
+  (`lib/providers/table_layout_provider.dart`) computes RowGroups per request
+  item (height = max linked offers across suppliers), an unlinked zone and
+  per-row heights; UI renders groups + zone. Offer identity is `offer.id` —
+  mutations are `updateOffer`/`removeOfferById`/`createOfferAt`/
+  `moveOfferWithinSupplier`/`moveOfferToSupplier`/`linkOffer`; the old
+  index-based `reorderOffers`/`moveOfferToEmpty`/`setOfferAt` and the list
+  paste (`parseRequestItems`) are gone — clipboard is grid TSV
+  (`clipboard_grid.dart` + Ctrl+C/V on `SelectionController`,
+  `selection_controller.dart`).
+- **Selection focus pitfall:** after an edit the cell returns focus to
+  `_selection.keyFocus` (the table FocusNode) — without that, arrows/Ctrl+C/V
+  are dead because no node in the table's path has focus. Navigation uses
+  `boundsProvider` for fresh bounds — a stale bounds snapshot silently clips
+  moves after the grid grows during a paste.
+- **Spare-row keys need `zoneIndex`**: all empty unlinked rows share one
+  keyBase, the loop index disambiguates (`offer.empty.<sid>.zone.<j>`).
+  Group rows are keyed by request-item id (`offerRow.<sid>.g.<rid>`), which
+  makes drag-relink tests stable.
+- **Unit dictionary**: `units.json` in app-support (created by
+  AppConfigService with `UnitsDict.defaultJson`); recognized units are
+  normalized on invoice add; unmatched units render orange and get an
+  autocomplete overlay in `EditableCell` (`suggestions` param).
 - **Sidecar stdio is forced to UTF-8.** On Windows the default code page makes
   the Cyrillic in recog/camelot logs (stderr) invalid UTF-8, so a strict decoder
   in `PythonBridge` throws `FormatException: Missing extension byte` and masks a
