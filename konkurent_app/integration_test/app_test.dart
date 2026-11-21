@@ -553,6 +553,51 @@ void main() {
     expect(offers.last.linkedRequestItemId, isNull);
   });
 
+  testWidgets('drag у нижнего края экрана прокручивает список', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    // Длинный блок: 40 предложений — список заведомо не влезает в экран.
+    container.read(appStateProvider.notifier).addSupplier(
+          SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              for (var i = 0; i < 40; i++)
+                Offer(id: 'o$i', itemName: 'Позиция $i'),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Строка №35 за пределами экрана до прокрутки.
+    final before = tester
+        .getTopLeft(find.byKey(const ValueKey('offerRow.s1.zone.34')))
+        .dy;
+    expect(before, greaterThan(990));
+
+    // Берём первый handle и ведём курсор к нижнему краю, держим ~1.2 с:
+    // тикер должен прокручивать список, пока курсор в краевой зоне.
+    final handle =
+        tester.getCenter(find.byKey(const ValueKey('offer.o0.handle')));
+    final gesture = await tester.startGesture(handle);
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveTo(Offset(handle.dx, 975));
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 400));
+      // лёгкое шевеление, чтобы drag не считался завершённым
+      await gesture.moveTo(Offset(handle.dx, 975 - i.toDouble()));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final after = tester
+        .getTopLeft(find.byKey(const ValueKey('offerRow.s1.zone.34')))
+        .dy;
+    expect(after, lessThan(before),
+        reason: 'удержание у края должно прокручивать список вниз');
+  });
+
   testWidgets('drag предложения на строку группы привязывает к позиции заявки',
       (tester) async {
     await pumpApp(tester);

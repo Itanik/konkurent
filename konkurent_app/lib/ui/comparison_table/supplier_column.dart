@@ -23,10 +23,16 @@ class SupplierColumn extends ConsumerWidget {
     super.key,
     required this.supplierId,
     required this.index,
+    this.onDragUpdate,
+    this.onDragEnd,
   });
 
   final String supplierId;
   final int index;
+
+  /// Автоскролл у края экрана: перемещение drag'а и его завершение.
+  final void Function(Offset globalPosition)? onDragUpdate;
+  final VoidCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -111,6 +117,8 @@ class SupplierColumn extends ConsumerWidget {
           groupRequestId: g.item.id,
           sumsOnly: sumsOnly,
           onOfferDrop: (drag, target) => handleDrop(drag, target, g.item.id),
+          onDragUpdate: onDragUpdate,
+          onDragEnd: onDragEnd,
         ));
       } else {
         for (var j = 0; j < linked.length; j++) {
@@ -128,6 +136,8 @@ class SupplierColumn extends ConsumerWidget {
             groupRequestId: g.item.id,
             sumsOnly: sumsOnly,
             onOfferDrop: (drag, target) => handleDrop(drag, target, g.item.id),
+            onDragUpdate: onDragUpdate,
+            onDragEnd: onDragEnd,
           ));
         }
       }
@@ -150,6 +160,8 @@ class SupplierColumn extends ConsumerWidget {
         groupRequestId: null,
         sumsOnly: sumsOnly,
         onOfferDrop: (drag, target) => handleDrop(drag, target, null),
+        onDragUpdate: onDragUpdate,
+        onDragEnd: onDragEnd,
       ));
     }
 
@@ -205,6 +217,9 @@ class SupplierColumn extends ConsumerWidget {
                 children: [
                   Draggable<SupplierDrag>(
                     data: SupplierDrag(supplier.id),
+                    onDragUpdate: (d) => onDragUpdate?.call(d.globalPosition),
+                    onDragEnd: (_) => onDragEnd?.call(),
+                    onDraggableCanceled: (_, __) => onDragEnd?.call(),
                     feedback: Material(
                       elevation: 4,
                       child: Chip(label: Text(supplier.displayName.isEmpty

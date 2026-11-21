@@ -32,7 +32,7 @@ class ComparisonTable extends ConsumerStatefulWidget {
 }
 
 class _ComparisonTableState extends ConsumerState<ComparisonTable>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final ScrollController _vertical = ScrollController();
   final ScrollController _horizontal = ScrollController();
   final SelectionController _selection = SelectionController();
@@ -45,6 +45,15 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
   Offset _anchor = Offset.zero;
   Offset _pointer = Offset.zero;
 
+  // Автоскролл у края экрана во время drag'а строки/колонки.
+  Ticker? _dragTicker;
+  bool _dragScrolling = false;
+  Duration _dragElapsed = Duration.zero;
+  double _dragVelocity = 0;
+
+  static const double _edgeZone = 72.0;
+  static const double _maxDragSpeed = 700.0; // px/с на краю зоны
+
   // Live-превью перестановки поставщиков.
   int? _dragFrom;
   int? _dragHover;
@@ -52,11 +61,66 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
   @override
   void dispose() {
     _ticker?.dispose();
+    _dragTicker?.dispose();
     _vertical.dispose();
     _horizontal.dispose();
     _tableFocus.dispose();
     _selection.dispose();
     super.dispose();
+  }
+
+  // --- автоскролл во время drag'а -------------------------------------------
+
+  /// Вызывается из handle'ов строк/колонок на каждое перемещение drag'а:
+  /// у верхнего/нижнего края вьюпорта запускает прокрутку, скорость растёт
+  /// к краю. Держать курсор на месте — прокрутка продолжается (Windows-стиль).
+  void _onTableDragUpdate(Offset global) {
+    if (!_vertical.hasClients) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+    final local = box.globalToLocal(global);
+    final fromTop = local.dy;
+    final fromBottom = box.size.height - local.dy;
+
+    // Курсор за границей вьюпорта (например у самого края окна) — считаем
+    // что он на краю, с максимальной скоростью.
+    double? velocity;
+    if (fromTop <= 0) {
+      velocity = -_maxDragSpeed;
+    } else if (fromTop < _edgeZone) {
+      velocity = -_maxDragSpeed * (1 - fromTop / _edgeZone);
+    } else if (fromBottom <= 0) {
+      velocity = _maxDragSpeed;
+    } else if (fromBottom < _edgeZone) {
+      velocity = _maxDragSpeed * (1 - fromBottom / _edgeZone);
+    }
+    if (velocity == null) {
+      _stopDragScroll();
+      return;
+    }
+    _dragVelocity = velocity;
+    if (!_dragScrolling) {
+      _dragScrolling = true;
+      _dragElapsed = Duration.zero;
+      _dragTicker?.dispose();
+      _dragTicker = createTicker(_onDragTick)..start();
+    }
+  }
+
+  void _stopDragScroll() {
+    if (!_dragScrolling) return;
+    _dragTicker?.stop();
+    _dragScrolling = false;
+  }
+
+  void _onDragTick(Duration elapsed) {
+    if (!_dragScrolling || !_vertical.hasClients) return;
+    final dt = (elapsed - _dragElapsed).inMicroseconds / 1e6;
+    _dragElapsed = elapsed;
+    if (dt <= 0) return;
+    final next = (_vertical.offset + _dragVelocity * dt)
+        .clamp(0.0, _vertical.position.maxScrollExtent);
+    _vertical.jumpTo(next);
   }
 
   // --- автоскролл -----------------------------------------------------------
@@ -493,6 +557,8 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
                                         SupplierColumn(
                                           supplierId: state.suppliers[i].id,
                                           index: i,
+                                          onDragUpdate: _onTableDragUpdate,
+                                          onDragEnd: _stopDragScroll,
                                         ),
                                       );
                                     },

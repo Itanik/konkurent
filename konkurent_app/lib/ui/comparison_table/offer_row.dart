@@ -34,6 +34,8 @@ class OfferRow extends ConsumerWidget {
     required this.onOfferDrop,
     this.sumsOnly = false,
     this.zoneIndex,
+    this.onDragUpdate,
+    this.onDragEnd,
   });
 
   final String supplierId;
@@ -64,6 +66,10 @@ class OfferRow extends ConsumerWidget {
 
   /// Режим сумм: только редактируемая ячейка суммы позиции.
   final bool sumsOnly;
+
+  /// Автоскролл у края экрана: перемещение drag'а и его завершение.
+  final void Function(Offset globalPosition)? onDragUpdate;
+  final VoidCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -148,6 +154,9 @@ class OfferRow extends ConsumerWidget {
               if (hasContent)
                 Draggable<OfferDrag>(
                   data: OfferDrag(supplierId, current.id),
+                  onDragUpdate: (d) => onDragUpdate?.call(d.globalPosition),
+                  onDragEnd: (_) => onDragEnd?.call(),
+                  onDraggableCanceled: (_, __) => onDragEnd?.call(),
                   feedback: Material(
                     elevation: 4,
                     child: Chip(
