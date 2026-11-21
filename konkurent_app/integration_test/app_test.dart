@@ -480,6 +480,37 @@ void main() {
     expect(offers.first.linkedRequestItemId, isNull);
   });
 
+  testWidgets('выбор единицы из подсказки применяется', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: 'Болт', qty: 4)],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Правка ед.изм: вводим префикс «ш» — словарь предлагает «шт».
+    await tapCell(tester, 'offer.o1.unit');
+    await tester.enterText(
+        find.byKey(const ValueKey('offer.o1.unit.field')), 'ш');
+    await tester.pumpAndSettle();
+
+    final suggestion = find.byKey(const ValueKey('offer.o1.unit.suggestion.шт'));
+    expect(suggestion, findsOneWidget);
+    await tester.tap(suggestion);
+    await tester.pumpAndSettle();
+
+    final offer = container.read(appStateProvider).suppliers.first.offers.first;
+    expect(offer.unit, 'шт',
+        reason: 'выбор из списка должен сразу применяться');
+    // Правка закрыта.
+    expect(find.byKey(const ValueKey('offer.o1.unit.field')), findsNothing);
+  });
+
   testWidgets('drag предложения вниз вставляет перед целью', (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);

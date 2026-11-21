@@ -149,22 +149,25 @@ class _EditableCellState extends State<EditableCell> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (final s in items)
-                  InkWell(
-                    key: widget.testId != null
-                        ? ValueKey<String>('${widget.testId}.suggestion.$s')
-                        : null,
-                    onTap: () {
-                      _controller.text = s;
-                      _controller.selection = TextSelection.collapsed(
-                          offset: s.length);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(s,
-                            style: Theme.of(context).textTheme.bodySmall),
+                  // Выбор применяется на pointer-down: тап по overlay — это
+                  // «снаружи» для TapRegion поля, и тот успевает закрыть
+                  // правку до InkWell.onTap, из-за чего выбор терялся.
+                  Listener(
+                    onPointerDown: (_) => _applySuggestion(s),
+                    child: InkWell(
+                      key: widget.testId != null
+                          ? ValueKey<String>('${widget.testId}.suggestion.$s')
+                          : null,
+                      onTap: () {},
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(s,
+                              style:
+                                  Theme.of(context).textTheme.bodySmall),
+                        ),
                       ),
                     ),
                   ),
@@ -177,6 +180,15 @@ class _EditableCellState extends State<EditableCell> {
     _removeOverlay();
     _overlay = entry;
     Overlay.of(context, rootOverlay: true).insert(entry);
+  }
+
+  /// Применяет выбранный пункт автодополнения: текст в контроллер и
+  /// немедленный коммит (выход из правки с вызовом onChanged).
+  void _applySuggestion(String s) {
+    _removeOverlay();
+    _controller.text = s;
+    _controller.selection = TextSelection.collapsed(offset: s.length);
+    if (_editing) _commit();
   }
 
   void _removeOverlay() {
