@@ -577,32 +577,38 @@ void main() {
     expect(offer.linkedRequestItemId, rid);
   });
 
-  testWidgets('кнопка «Сопоставить» привязывает непривязанные предложения',
+  testWidgets('кнопка «Сопоставить» пересматривает все привязки по названиям',
       (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
 
     final notifier = container.read(appStateProvider.notifier);
     notifier.updateRequestItem(0, name: 'Гайка М12');
-    final rid = container.read(appStateProvider).requestItems.first.id;
+    notifier.updateRequestItem(1, name: 'Болт М8');
+    final r0 = container.read(appStateProvider).requestItems[0].id;
+    final r1 = container.read(appStateProvider).requestItems[1].id;
+    // Счёт не в порядке заявки: позиальное сопоставление привязало неверно.
     notifier.addSupplier(
-          const SupplierBlock(
+          SupplierBlock(
             id: 's1',
             displayName: 'А',
             offers: [
-              Offer(id: 'o1', itemName: 'Гайка М12 DIN934 оцинк.'),
-              Offer(id: 'o2', itemName: 'Что-то совсем другое'),
+              const Offer(id: 'o1', itemName: 'Болт М8 оцинк.'),
+              const Offer(id: 'o2', itemName: 'Гайка М12 DIN934 оцинк.'),
             ],
           ),
         );
+    notifier.linkOffersPositionally(); // o1 → r0 (неверно), o2 → r1 (неверно)
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('toolbar.autoLink')));
     await tester.pumpAndSettle();
 
     final offers = container.read(appStateProvider).suppliers.first.offers;
-    expect(offers[0].linkedRequestItemId, rid);
-    expect(offers[1].linkedRequestItemId, isNull);
+    expect(offers[0].itemName, contains('Болт'));
+    expect(offers[0].linkedRequestItemId, r1,
+        reason: 'болт переехал на свою позицию');
+    expect(offers[1].linkedRequestItemId, r0);
   });
 
   testWidgets('правка цены пересчитывает сумму', (tester) async {

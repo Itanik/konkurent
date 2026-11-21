@@ -204,6 +204,63 @@ void main() {
     expect(offers[1].linkedRequestItemId, isNull);
   });
 
+  test('relinkAllOffersByName пересматривает ВСЕ привязки, а не только остатки',
+      () {
+    // Сценарий из практики: счёт не в порядке заявки — позиционное
+    // сопоставление привязало «Гайка М16» к позиции «Шпилька М16х1000».
+    notifier().updateRequestItem(0, name: 'Шпилька резьбовая М16х1000');
+    notifier().updateRequestItem(1, name: 'Гайка DIN934 М16');
+    final r0 = state().requestItems[0].id;
+    final r1 = state().requestItems[1].id;
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
+      Offer(
+          id: 'a', itemName: 'Гайка М16 DIN 934 цинк', linkedRequestItemId: r0),
+      Offer(
+          id: 'b',
+          itemName: 'Шпилька резьбовая М 16х1000 DIN 975',
+          linkedRequestItemId: r1),
+    ]));
+
+    final n = notifier().relinkAllOffersByName();
+    expect(n, 2);
+    final offers = state().suppliers.first.offers;
+    // Обе неверные связи исправлены по названиям.
+    expect(offers[0].itemName, contains('Гайка'));
+    expect(offers[0].linkedRequestItemId, r1);
+    expect(offers[1].linkedRequestItemId, r0);
+  });
+
+  test('relinkAllOffersByName отвязывает предложения без совпадений', () {
+    notifier().updateRequestItem(0, name: 'Болт М8');
+    final r0 = state().requestItems[0].id;
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
+      Offer(
+          id: 'a', itemName: 'Кабель силовой ВВГнг', linkedRequestItemId: r0),
+      const Offer(id: 'b', itemName: 'Болт М8 оцинк.'),
+    ]));
+
+    notifier().relinkAllOffersByName();
+    final offers = state().suppliers.first.offers;
+    expect(offers[0].linkedRequestItemId, isNull,
+        reason: 'несовпадающее отвязывается в зону');
+    expect(offers[1].linkedRequestItemId, r0);
+  });
+
+  test('relinkAllOffersByName: предложений меньше, чем позиций — покрыть все',
+      () {
+    notifier().updateRequestItem(0, name: 'Гайка М16');
+    notifier().updateRequestItem(1, name: 'Шайба М16');
+    notifier().updateRequestItem(2, name: 'Болт М16');
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
+      const Offer(id: 'a', itemName: 'Гайка М16 DIN934 цинк'),
+    ]));
+
+    expect(notifier().relinkAllOffersByName(), 1);
+    expect(state().suppliers.first.offers.first.linkedRequestItemId,
+        state().requestItems[0].id);
+    // Остальные группы остаются с пустой ячейкой.
+  });
+
   test('requestFullyFilled: все три поля заполнены', () {
     expect(notifier().requestFullyFilled, isFalse);
     notifier().updateRequestItem(0, name: 'A', qty: '1', unit: 'шт');

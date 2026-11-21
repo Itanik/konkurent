@@ -242,6 +242,45 @@ class AppStateNotifier extends Notifier<AppState> {
     return linkedCount;
   }
 
+  /// Кнопка «Сопоставить»: полный пересмотр привязок **всех** предложений
+  /// всех поставщиков по названиям позиций заявки. Позиционное
+  /// сопоставление могло привязать по порядку неверно (счёт не в порядке
+  /// заявки) — здесь каждый предложенный товар заново ищет свою позицию;
+  /// предложения, которым совпадение не нашлось, отвязываются (остаются в
+  /// зоне). Позиции без совпадений остаются пустыми в группах —
+  /// предложений может быть меньше, чем позиций. Ручные привязки,
+  /// сделанные до нажатия, пересматриваются на общих основаниях.
+  int relinkAllOffersByName() {
+    final items = state.requestItems
+        .where((r) => r.name.trim().isNotEmpty)
+        .map((r) => (id: r.id, name: r.name))
+        .toList();
+    var linkedCount = 0;
+    final linkedIds = <String>[];
+    state = state.copyWith(suppliers: [
+      for (final s in state.suppliers)
+        s.copyWith(offers: [
+          for (final o in s.offers)
+            if (o.itemName.trim().isNotEmpty)
+              () {
+                final match = bestMatch(o.itemName, items);
+                if (match == null) {
+                  return o.linkedRequestItemId == null
+                      ? o
+                      : o.copyWith(clearLink: true);
+                }
+                linkedCount++;
+                linkedIds.add(o.id);
+                return o.copyWith(linkedRequestItemId: match.$1);
+              }()
+            else
+              o.copyWith(clearLink: true),
+        ]),
+    ]);
+    ref.read(recentlyLinkedProvider.notifier).set(linkedIds);
+    return linkedCount;
+  }
+
   /// Заявка «полностью заполнена» — у каждой позиции есть название, кол-во
   /// и ед.изм; условие автозапуска сопоставления после распознавания.
   bool get requestFullyFilled =>

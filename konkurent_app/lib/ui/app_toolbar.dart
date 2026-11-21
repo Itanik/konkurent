@@ -82,9 +82,11 @@ class AppToolbar extends ConsumerWidget implements PreferredSizeWidget {
         ),
         IconButton(
           key: const ValueKey('toolbar.autoLink'),
-          tooltip: 'Сопоставить непривязанные предложения с позициями заявки',
+          tooltip:
+              'Сопоставить все предложения с позициями заявки по названиям\n'
+              '(заново, включая уже привязанные)',
           icon: const Icon(Icons.link),
-          onPressed: notifier.autoLinkOffers,
+          onPressed: notifier.relinkAllOffersByName,
         ),
         IconButton(
           key: const ValueKey('toolbar.open'),
