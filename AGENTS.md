@@ -234,6 +234,18 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   are dead because no node in the table's path has focus. Navigation uses
   `boundsProvider` for fresh bounds — a stale bounds snapshot silently clips
   moves after the grid grows during a paste.
+- **Ctrl+V has two paths.** When a cell is being edited, `EditableCell`
+  intercepts the shortcut: a multi-line/multi-column buffer is delegated to
+  the grid paste (`SelectionController.gridPaste` → ComparisonTable's
+  `_pasteGridFrom`), a single-line buffer goes into the field. When nothing
+  is edited, the table Focus handles Ctrl+V at the selection. Paste also
+  splits a glued qty+unit last column («9 шт») via `ClipboardGrid.splitQtyUnit`
+  and auto-links offers when the pasted request is fully filled.
+- **Dart RegExp `\b` is ASCII-only** — it never fires next to Cyrillic
+  letters (there is no `\w` boundary before «м16»). Spell the boundary out
+  explicitly (`(?:^|[^а-яёa-z0-9])`) — this bit the diameter guard in
+  `fuzzy_match.itemDiameter` after it had been tuned in Python (Python's `\b`
+  is Unicode by default).
 - **Spare-row keys need `zoneIndex`**: all empty unlinked rows share one
   keyBase, the loop index disambiguates (`offer.empty.<sid>.zone.<j>`).
   Group rows are keyed by request-item id (`offerRow.<sid>.g.<rid>`), which
