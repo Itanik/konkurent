@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/app_state.dart';
+import '../providers/recently_linked_provider.dart';
 import '../services/app_config_service.dart';
 import '../utils/fuzzy_match.dart';
 
@@ -20,6 +21,7 @@ class AppStateNotifier extends Notifier<AppState> {
   }
 
   void reset() {
+    ref.read(recentlyLinkedProvider.notifier).clear();
     state = const AppState();
   }
 
@@ -170,7 +172,8 @@ class AppStateNotifier extends Notifier<AppState> {
   }
 
   /// Автосопоставление непривязанных предложений с позициями заявки
-  /// (нечёткое сравнение названий). Возвращает число новых привязок.
+  /// (нечёткое сравнение названий). Возвращает число новых привязок;
+  /// свежепривязанные подсвечиваются (`recentlyLinkedProvider`).
   int autoLinkOffers() {
     final items = state.requestItems
         .where((r) => r.name.trim().isNotEmpty)
@@ -178,6 +181,7 @@ class AppStateNotifier extends Notifier<AppState> {
         .toList();
     if (items.isEmpty) return 0;
     var linkedCount = 0;
+    final linkedIds = <String>[];
     state = state.copyWith(suppliers: [
       for (final s in state.suppliers)
         s.copyWith(offers: [
@@ -188,12 +192,14 @@ class AppStateNotifier extends Notifier<AppState> {
                 final match = bestMatch(o.itemName, items);
                 if (match == null) return o;
                 linkedCount++;
+                linkedIds.add(o.id);
                 return o.copyWith(linkedRequestItemId: match.$1);
               }()
             else
               o,
         ]),
     ]);
+    ref.read(recentlyLinkedProvider.notifier).set(linkedIds);
     return linkedCount;
   }
 

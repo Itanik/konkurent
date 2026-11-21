@@ -219,13 +219,22 @@ class _EditableCellState extends State<EditableCell> {
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final kb = HardwareKeyboard.instance;
+    // Ctrl+V с многоколоночным/многострочным буфером — не текст в поле, а
+    // grid-вставка от этой ячейки (как в Excel).
+    final isPaste = (event.logicalKey == LogicalKeyboardKey.keyV &&
+            (kb.isControlPressed || kb.isMetaPressed)) ||
+        (event.logicalKey == LogicalKeyboardKey.insert && kb.isShiftPressed);
+    if (isPaste) {
+      _handleGridPaste();
+      return KeyEventResult.handled;
+    }
     // Tab подтверждает и уводит выделение вправо (Excel-навигация).
     if (event.logicalKey == LogicalKeyboardKey.tab) {
       _commit();
       final a = widget.address;
       if (a != null) {
-        _selection?.move(0,
-            HardwareKeyboard.instance.isShiftPressed ? -1 : 1);
+        _selection?.move(0, kb.isShiftPressed ? -1 : 1);
       }
       return KeyEventResult.handled;
     }
@@ -236,6 +245,38 @@ class _EditableCellState extends State<EditableCell> {
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  Future<void> _handleGridPaste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text ?? '';
+    if (!mounted) return;
+    if (!text.contains('\t') && !text.contains('\n')) {
+      // Одиночная строка — обычная вставка в поле (нативный шорткат уже
+      // вставил бы текст, но мы перехватили событие — вставим сами).
+      _insertText(text);
+      return;
+    }
+    final a = widget.address;
+    final paste = _selection?.gridPaste;
+    if (a == null || paste == null) {
+      _insertText(text);
+      return;
+    }
+    _commit();
+    paste(a, text);
+  }
+
+  void _insertText(String text) {
+    final value = _controller.value;
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : value.text.length;
+    final next = value.text.replaceRange(start, end, text);
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + text.length),
+    );
   }
 
   @override

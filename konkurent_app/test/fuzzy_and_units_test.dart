@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:konkurent_app/services/app_config_service.dart';
+import 'package:konkurent_app/services/clipboard_grid.dart';
 import 'package:konkurent_app/utils/fuzzy_match.dart';
 
 void main() {
@@ -13,17 +14,54 @@ void main() {
       expect(itemSimilarity('Болт М8', 'болт м8'), 1);
     });
 
-    test('родственные названия выше порога', () {
-      final sim = itemSimilarity(
-          'Шпилька резьбовая М12х2000 DIN 975',
-          'Шпилька резьбовая М12 DIN 975 цинк');
-      expect(sim, greaterThan(kMatchThreshold));
+    test('родственные названия выше порога (пары из реальных счетов)', () {
+      // Пробел в размере + лишние слова в счёте.
+      expect(
+          itemSimilarity('Шпилька резьбовая М 16х2000 DIN 975 кл.пр.8.8 цинк',
+              'Шпилька резьбовая М16 кл. пр. 8.8'),
+          greaterThan(kMatchThreshold));
+      expect(
+          itemSimilarity('Гайка М 16 DIN 934 кл.пр.8 цинк (уп.1 кг)',
+              'Гайка DIN934 М16 кл.пр. 8 цинк'),
+          greaterThan(kMatchThreshold));
+      expect(
+          itemSimilarity('Шпилька резьбовая М 12х2000 DIN 975 цинк',
+              'Шпилька резьбовая М12'),
+          greaterThan(kMatchThreshold));
     });
 
     test('разные названия ниже порога', () {
       expect(
           itemSimilarity('Болт М8', 'Кабель силовой ВВГнг 3х2.5'),
           lessThan(kMatchThreshold));
+    });
+
+    test('диаметр-гард: разный размер — сильный штраф', () {
+      // М10-гайка не должна матчиться к М16-позиции.
+      final wrong = itemSimilarity(
+          'Гайка М 10 DIN 934 кл.пр.8 цинк (уп.1 кг)',
+          'Гайка DIN934 М16 кл.пр. 8 цинк');
+      final right = itemSimilarity(
+          'Гайка М 10 DIN 934 кл.пр.8 цинк (уп.1 кг)', 'Гайка DIN 934 оц');
+      expect(wrong, lessThan(right));
+      expect(wrong, lessThan(kMatchThreshold));
+      expect(right, greaterThan(kMatchThreshold));
+    });
+
+    test('без явного «М» у одной стороны штраф не применяется', () {
+      // «Шайба 16 (d17)» против «ув. М16 (д17)» — верная пара.
+      expect(
+          itemSimilarity('Шайба плоская увеличенная 16 (d17) DIN 9021 цинк',
+              'Шайба плоская ув. М16 (д17) цинк'),
+          greaterThan(0.4));
+      expect(itemDiameter('Шайба плоская увеличенная 16 (d17)'), isNull);
+      expect(itemDiameter('Шайба плоская ув. М16 (д17)'), '16');
+    });
+
+    test('itemDiameter достаёт м-диаметр', () {
+      expect(itemDiameter('Шпилька М 16х2000'), '16');
+      expect(itemDiameter('Болт М10х1,5'), '10');
+      expect(itemDiameter('Анкер клиновой 16х110'), isNull);
     });
 
     test('bestMatch находит лучшего кандидата', () {
@@ -38,6 +76,20 @@ void main() {
     test('bestMatch возвращает null ниже порога', () {
       expect(
           bestMatch('Болт', [(id: 'a', name: 'Совершенно иное')]), isNull);
+    });
+  });
+
+  group('splitQtyUnit', () {
+    test('число + короткий хвост', () {
+      expect(ClipboardGrid.splitQtyUnit('9 шт'), ('9', 'шт'));
+      expect(ClipboardGrid.splitQtyUnit('5 м.п.'), ('5', 'м.п.'));
+      expect(ClipboardGrid.splitQtyUnit('2,5 кг'), ('2.5', 'кг'));
+      expect(ClipboardGrid.splitQtyUnit('10'), ('10', ''));
+    });
+
+    test('без числа — null', () {
+      expect(ClipboardGrid.splitQtyUnit('шт'), isNull);
+      expect(ClipboardGrid.splitQtyUnit(''), isNull);
     });
   });
 

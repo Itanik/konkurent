@@ -5,7 +5,9 @@
 /// сравниваем нормализованные строки и множества токенов.
 library;
 
-const double kMatchThreshold = 0.7;
+import 'dart:math' as math;
+
+const double kMatchThreshold = 0.54;
 
 /// Нормализация: нижний регистр, ё→е, без пунктуации, схлопнутые пробелы.
 String normalizeItemName(String raw) {
@@ -13,6 +15,16 @@ String normalizeItemName(String raw) {
   s = s.replaceAll(RegExp(r'[^\wа-яй\s]+'), ' ');
   s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
   return s;
+}
+
+/// Явный м-диаметр позиции («М16», «м 10»): ключевой дискриминатор —
+/// «Гайка М10» не должна матчиться к «Гайка DIN934 М16». null — не указан.
+String? itemDiameter(String raw) {
+  // \b в Dart-регэкспе ASCII-ный и не срабатывает перед кириллической «м»,
+  // поэтому границу слева описываем явно (не-буква/начало строки).
+  final m = RegExp(r'(?:^|[^а-яёa-z0-9])[мm]\s*(\d{1,3})(?!\d)')
+      .firstMatch(normalizeItemName(raw));
+  return m?.group(1);
 }
 
 int _levenshtein(String a, String b) {
@@ -45,10 +57,15 @@ double _levenshteinRatio(String a, String b) {
   return 1 - dist / maxLen;
 }
 
-/// Сходство двух названий в диапазоне 0..1: смесь расстояния Левенштейна
-/// по нормализованным строкам и токен-мер. Контейнмент (доля меньшего
-/// множества токенов внутри большего) — ключевой сигнал: названия счетов
-/// часто длиннее заявочных («… DIN 975 цинк»), это то же самое положение.
+/// Сходство двух названий в диапазоне 0..1. Сигналы:
+/// - Левенштейн по нормализованным строкам **и** по компактным (без
+///   пробелов) — «М 16х2000» и «М16» сравниваются без штрафа за пробел;
+/// - контейнмент токенов (доля меньшего множества в большем) — названия
+///   счетов обычно длиннее заявочных;
+/// - Jaccard.
+/// Диаметр-гард: явные м-диаметры обеих строк не совпадают → сильный штраф
+/// (разный размер — почти наверняка другая позиция). Откалибровано на
+/// реальных счетах (см. example_data/krep).
 double itemSimilarity(String a, String b) {
   final na = normalizeItemName(a);
   final nb = normalizeItemName(b);
@@ -65,8 +82,18 @@ double itemSimilarity(String a, String b) {
       : tokensB.length;
   final containment = minSize == 0 ? 0.0 : intersection / minSize;
 
-  final lev = _levenshteinRatio(na, nb);
-  return 0.3 * lev + 0.5 * containment + 0.2 * jaccard;
+  final lev = math.max(
+    _levenshteinRatio(na, nb),
+    _levenshteinRatio(na.replaceAll(' ', ''), nb.replaceAll(' ', '')),
+  );
+  var score = 0.3 * lev + 0.5 * containment + 0.2 * jaccard;
+
+  final da = itemDiameter(a);
+  final db = itemDiameter(b);
+  if (da != null && db != null && da != db) {
+    score *= 0.55;
+  }
+  return score;
 }
 
 /// Лучший кандидат для [name] среди [candidates] (id + название).

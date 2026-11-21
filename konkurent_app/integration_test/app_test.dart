@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:konkurent_app/models/app_state.dart';
 import 'package:konkurent_app/providers/app_state_provider.dart';
+import 'package:konkurent_app/providers/recently_linked_provider.dart';
 import 'package:konkurent_app/providers/services.dart';
 import 'package:konkurent_app/providers/session_provider.dart';
 import 'package:konkurent_app/providers/zoom_provider.dart';
@@ -376,29 +377,83 @@ void main() {
     expect(data?.text, 'Болт');
   });
 
-  testWidgets('Ctrl+V вставляет TSV по ячейкам от выделения', (tester) async {
+  testWidgets('Ctrl+V из поля ввода: 2 колонки → позиции с раздельными кол-во/ед',
+      (tester) async {
     await pumpApp(tester);
     final container = containerOf(tester);
 
-    container
-        .read(appStateProvider.notifier)
-        .addSupplier(const SupplierBlock(id: 's1', displayName: 'А'));
-    await tester.pumpAndSettle();
+    await Clipboard.setData(const ClipboardData(
+      text: 'Шпоночный материал 4х4\t5 м.п.\n'
+          'Шпоночный материал 5х5\t5 м.п.\n'
+          'Труба б/ш 27х4\t20 м.п.',
+    ));
 
-    await Clipboard.setData(
-        const ClipboardData(text: 'Болт\t10\tшт\nГайка\t5\tшт'));
-    await tapCell(tester, 'offer.empty.s1.zone.0.item');
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
+    // Клик открывает правку; Ctrl+V с многострочным буфером уходит в
+    // grid-вставку от этой ячейки, а не в поле.
+    await tapCell(tester, 'fixed.item.0.name');
     await sendPaste(tester);
 
-    final offers = container.read(appStateProvider).suppliers.first.offers;
-    expect(offers, hasLength(2));
-    expect(offers[0].itemName, 'Болт');
-    expect(offers[0].qty, 10);
-    expect(offers[0].unit, 'шт');
-    expect(offers[1].itemName, 'Гайка');
-    expect(offers[1].qty, 5);
+    final items = container.read(appStateProvider).requestItems;
+    expect(items, hasLength(3));
+    expect(items[0].name, 'Шпоночный материал 4х4');
+    expect(items[0].qty, '5');
+    expect(items[0].unit, 'м.п.');
+    expect(items[2].name, 'Труба б/ш 27х4');
+    expect(items[2].qty, '20');
+    expect(items[2].unit, 'м.п.');
+  });
+
+  testWidgets('Ctrl+V из поля ввода: 3 колонки вставляются напрямую',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    await Clipboard.setData(const ClipboardData(
+        text: 'Болт М8\t10\tшт\nГайка М8\t20\tшт'));
+    await tapCell(tester, 'fixed.item.0.name');
+    await sendPaste(tester);
+
+    final items = container.read(appStateProvider).requestItems;
+    expect(items, hasLength(2));
+    expect(items[0].name, 'Болт М8');
+    expect(items[0].qty, '10');
+    expect(items[0].unit, 'шт');
+    expect(items[1].unit, 'шт');
+  });
+
+  testWidgets('вставка заявки после распознавания привязывает предложения',
+      (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    // Распознали счёт: предложения в зоне без привязки.
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              Offer(id: 'o1', itemName: 'Гайка DIN 934 М16 цинк', qty: 40),
+              Offer(id: 'o2', itemName: 'Болт М8 оцинк.', qty: 10),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Вставляем заявку (3 колонки: заявка полностью заполнена) →
+    // автосопоставление привязывает подходящее, зона схлопывается.
+    await Clipboard.setData(const ClipboardData(
+        text: 'Гайка DIN934 М16 кл.пр. 8 цинк\t40\tшт\nБолт М8\t10\tшт'));
+    await tapCell(tester, 'fixed.item.0.name');
+    await sendPaste(tester);
+
+    final state = container.read(appStateProvider);
+    final offers = state.suppliers.first.offers;
+    expect(offers[0].linkedRequestItemId, isNotNull,
+        reason: 'гайка должна привязаться к позиции');
+    expect(offers[1].linkedRequestItemId, isNotNull);
+    // Подсветка свежесопоставленных.
+    expect(container.read(recentlyLinkedProvider),
+        containsAll(['o1', 'o2']));
   });
 
   testWidgets('ввод в пустую строку создаёт предложение', (tester) async {

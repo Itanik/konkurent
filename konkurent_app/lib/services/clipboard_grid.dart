@@ -27,4 +27,15 @@ class ClipboardGrid {
     }
     return buf.toString();
   }
+
+  /// Разбор склеенной колонки «кол-во + ед.изм»: ведущее число и короткий
+  /// нечисловой хвост («9 шт» → («9», «шт»), «5 м.п.» → («5», «м.п.»)).
+  /// null — значение не начинается с числа.
+  static (String, String)? splitQtyUnit(String raw) {
+    final m = RegExp(r'^(\d+(?:[.,]\d+)?)\s*(.{0,12})$').firstMatch(raw.trim());
+    if (m == null) return null;
+    final qty = m.group(1)!.replaceAll(',', '.');
+    final unit = m.group(2)!.trim();
+    return (qty, unit);
+  }
 }

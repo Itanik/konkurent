@@ -49,6 +49,10 @@ class SelectionController extends ChangeNotifier {
   /// последней сборки (правка дорастила сетку).
   SelectionBounds Function()? boundsProvider;
 
+  /// Grid-вставка TSV от адреса ячейки: назначается ComparisonTable;
+  /// EditableCell делегирует сюда Ctrl+V с многоколоночным буфером.
+  void Function(CellAddress at, String text)? gridPaste;
+
   void _refreshBounds() {
     final b = boundsProvider?.call();
     if (b != null) bounds = b;

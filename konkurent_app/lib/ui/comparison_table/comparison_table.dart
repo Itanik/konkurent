@@ -309,18 +309,30 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text == null || text.isEmpty) return;
+    _pasteGridFrom(at, text);
+  }
+
+  /// Применяет TSV-сетку от ячейки [at] по-ячеечно; сетка дорастает.
+  /// После вставки в панель заявки с полностью заполненными позициями
+  /// запускает автосопоставление предложений.
+  void _pasteGridFrom(CellAddress at, String text) {
     final grid = ClipboardGrid.parse(text);
     if (grid.isEmpty) return;
-
     final notifier = ref.read(appStateProvider.notifier);
     for (var i = 0; i < grid.length; i++) {
-      for (var j = 0; j < grid[i].length; j++) {
-        _applyCell(cell(at.b, at.c + j, at.r + i), grid[i][j], notifier);
+      final row = grid[i];
+      for (var j = 0; j < row.length; j++) {
+        _applyCell(cell(at.b, at.c + j, at.r + i), row[j], notifier,
+            isLastSourceColumn: j == row.length - 1);
       }
+    }
+    if (at.b == -1 && notifier.requestFullyFilled) {
+      notifier.autoLinkOffers();
     }
   }
 
-  void _applyCell(CellAddress a, String value, AppStateNotifier notifier) {
+  void _applyCell(CellAddress a, String value, AppStateNotifier notifier,
+      {bool isLastSourceColumn = false}) {
     final state = ref.read(appStateProvider);
     // Свежая раскладка: предыдущие ячейки вставки уже могли дорастить сетку.
     final layout = ref.read(tableLayoutProvider);
@@ -342,7 +354,16 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
         case 0:
           notifier.updateRequestItem(idx, name: value);
         case 1:
-          notifier.updateRequestItem(idx, qty: value);
+          // Последняя колонка источника без отдельной ед.изм:
+          // «9 шт» → кол-во 9 + ед.изм шт.
+          final split = isLastSourceColumn
+              ? ClipboardGrid.splitQtyUnit(value)
+              : null;
+          if (split != null && split.$2.isNotEmpty) {
+            notifier.updateRequestItem(idx, qty: split.$1, unit: split.$2);
+          } else {
+            notifier.updateRequestItem(idx, qty: value);
+          }
         case 2:
           notifier.updateRequestItem(idx, unit: value);
       }
@@ -373,6 +394,14 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
         case 0:
           return o.copyWith(itemName: value);
         case 1:
+          final split = isLastSourceColumn
+              ? ClipboardGrid.splitQtyUnit(value)
+              : null;
+          if (split != null && split.$2.isNotEmpty) {
+            final n = parseNumber(split.$1);
+            return o.copyWith(
+                qty: n, clearQty: n == null, unit: split.$2);
+          }
           final n = parseNumber(value);
           return o.copyWith(qty: n, clearQty: n == null);
         case 2:
@@ -409,6 +438,7 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
           totalRows: ref.read(tableLayoutProvider).totalRows,
           supplierCount: ref.read(appStateProvider).suppliers.length,
         );
+    _selection.gridPaste = _pasteGridFrom;
 
     return SelectionScope(
       notifier: _selection,

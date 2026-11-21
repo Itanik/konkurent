@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
+import '../../providers/recently_linked_provider.dart';
 import '../../providers/zoom_provider.dart';
 import '../../services/app_config_service.dart';
 import '../../utils/format.dart';
@@ -73,6 +74,8 @@ class OfferRow extends ConsumerWidget {
     final vat = config?.vatRate ?? 0.22;
     final units = config?.units ?? const UnitsDict({});
     final showSecondary = ref.watch(showSumWithoutVatProvider) && !withoutVat;
+    final recentlyLinked =
+        current != null && ref.watch(recentlyLinkedProvider).contains(current.id);
     final hasContent = current != null && !current.isEmpty;
     final keyBase = current != null
         ? 'offer.${current.id}'
@@ -136,6 +139,10 @@ class OfferRow extends ConsumerWidget {
         GridBox(
           width: m.itemWidth,
           height: rowHeight,
+          // Свежесопоставленное автолинком — мягкая зелёная подсказка.
+          color: recentlyLinked
+              ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45)
+              : null,
           child: Row(
             children: [
               if (hasContent)
