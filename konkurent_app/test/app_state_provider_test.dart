@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:konkurent_app/models/app_state.dart';
 import 'package:konkurent_app/providers/app_state_provider.dart';
+import 'package:konkurent_app/providers/recently_linked_provider.dart';
 import 'package:konkurent_app/providers/table_layout_provider.dart';
 
 SupplierBlock block(String id, String name, List<double?> sums) {
@@ -230,7 +231,7 @@ void main() {
     expect(offers[1].linkedRequestItemId, r0);
   });
 
-  test('relinkAllOffersByName отвязывает предложения без совпадений', () {
+  test('relinkAllOffersByName: брак не перемещает строки', () {
     notifier().updateRequestItem(0, name: 'Болт М8');
     final r0 = state().requestItems[0].id;
     notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
@@ -241,9 +242,26 @@ void main() {
 
     notifier().relinkAllOffersByName();
     final offers = state().suppliers.first.offers;
-    expect(offers[0].linkedRequestItemId, isNull,
-        reason: 'несовпадающее отвязывается в зону');
+    // Кабель без совпадения — остаётся там, где стоял (не улетает в зону).
+    expect(offers[0].linkedRequestItemId, r0,
+        reason: 'без совпадения привязка сохраняется');
     expect(offers[1].linkedRequestItemId, r0);
+  });
+
+  test('relinkAllOffersByName: привязка уже верная — без изменений', () {
+    notifier().updateRequestItem(0, name: 'Гайка М16');
+    final r0 = state().requestItems[0].id;
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
+      Offer(
+          id: 'a',
+          itemName: 'Гайка М16 DIN934 цинк',
+          linkedRequestItemId: r0),
+    ]));
+
+    expect(notifier().relinkAllOffersByName(), 0,
+        reason: 'совпадение совпадает с текущей привязкой — счётчик нулевой');
+    // Подсветка не обновлялась.
+    expect(container.read(recentlyLinkedProvider), isEmpty);
   });
 
   test('relinkAllOffersByName: предложений меньше, чем позиций — покрыть все',

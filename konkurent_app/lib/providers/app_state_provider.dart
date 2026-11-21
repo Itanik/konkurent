@@ -242,21 +242,22 @@ class AppStateNotifier extends Notifier<AppState> {
     return linkedCount;
   }
 
-  /// Кнопка «Сопоставить»: полный пересмотр привязок **всех** предложений
+  /// Кнопка «Сопоставить»: улучшающая правка привязок **всех** предложений
   /// всех поставщиков по названиям позиций заявки. Позиционное
   /// сопоставление могло привязать по порядку неверно (счёт не в порядке
-  /// заявки) — здесь каждый предложенный товар заново ищет свою позицию;
-  /// предложения, которым совпадение не нашлось, отвязываются (остаются в
-  /// зоне). Позиции без совпадений остаются пустыми в группах —
-  /// предложений может быть меньше, чем позиций. Ручные привязки,
-  /// сделанные до нажатия, пересматриваются на общих основаниях.
+  /// заявки) — уверенное совпадение перекидывает предложение на свою
+  /// позицию. Предложение **без** совпадения остаётся там, где стояло
+  /// (в группе или зоне): «брак» не перемещает строки и не создает работу
+  /// по возврату позиций на место. Совпадений может не быть у части
+  /// позиций — они остаются пустыми в группах (предложений бывает меньше,
+  /// чем позиций). Перемещённые подсвечиваются (`recentlyLinkedProvider`).
   int relinkAllOffersByName() {
     final items = state.requestItems
         .where((r) => r.name.trim().isNotEmpty)
         .map((r) => (id: r.id, name: r.name))
         .toList();
-    var linkedCount = 0;
-    final linkedIds = <String>[];
+    var changedCount = 0;
+    final changedIds = <String>[];
     state = state.copyWith(suppliers: [
       for (final s in state.suppliers)
         s.copyWith(offers: [
@@ -264,21 +265,22 @@ class AppStateNotifier extends Notifier<AppState> {
             if (o.itemName.trim().isNotEmpty)
               () {
                 final match = bestMatch(o.itemName, items);
-                if (match == null) {
-                  return o.linkedRequestItemId == null
-                      ? o
-                      : o.copyWith(clearLink: true);
+                if (match == null || o.linkedRequestItemId == match.$1) {
+                  // Нет уверенного совпадения или уже на месте — не трогаем.
+                  return o;
                 }
-                linkedCount++;
-                linkedIds.add(o.id);
+                changedCount++;
+                changedIds.add(o.id);
                 return o.copyWith(linkedRequestItemId: match.$1);
               }()
             else
-              o.copyWith(clearLink: true),
+              o,
         ]),
     ]);
-    ref.read(recentlyLinkedProvider.notifier).set(linkedIds);
-    return linkedCount;
+    if (changedCount > 0) {
+      ref.read(recentlyLinkedProvider.notifier).set(changedIds);
+    }
+    return changedCount;
   }
 
   /// Заявка «полностью заполнена» — у каждой позиции есть название, кол-во
