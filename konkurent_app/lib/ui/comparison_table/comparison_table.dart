@@ -326,8 +326,10 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
             isLastSourceColumn: j == row.length - 1);
       }
     }
-    if (at.b == -1 && notifier.requestFullyFilled) {
-      notifier.autoLinkOffers();
+    if (at.b == -1) {
+      // Вставили заявку — свежие (полностью непривязанные) поставщики
+      // сопоставляются позиционно: k-е предложение → k-я позиция.
+      notifier.linkOffersPositionally();
     }
   }
 

@@ -127,6 +127,27 @@ void main() {
       expect(back.displaySum(withoutVat: false, vat: vat), 100);
     });
 
+    test('вычисляемые значения округляются до 2 знаков', () {
+      // 122 / 3 = 40.66666… → цена 40.67.
+      expect(
+          const Offer(id: 'o1', qty: 3, sumWithVat: 122)
+              .displayPrice(withoutVat: false, vat: vat),
+          40.67);
+      // Сумма из цены: 41.67 × 3 = 125.01.
+      final priced = Offer(id: 'o2', qty: 3)
+          .withPriceInput(41.67, withoutVat: false);
+      expect(priced.displaySum(withoutVat: false, vat: vat), 125.01);
+      // Вывод «без НДС»: 122 / 1.22 = 100.
+      expect(
+          const Offer(id: 'o3', sumWithVat: 122)
+              .displaySum(withoutVat: true, vat: vat),
+          100.0);
+      // Хвосты длиннее 2 знаков не появляются.
+      final s = const Offer(id: 'o4', qty: 7, sumWithVat: 300)
+          .displaySum(withoutVat: false, vat: vat)!;
+      expect((s * 100).roundToDouble() / 100, s);
+    });
+
     test('пустая строка учитывает цены', () {
       expect(const Offer(id: 'o1').isEmpty, isTrue);
       expect(const Offer(id: 'o1', priceWithVat: 5).isEmpty, isFalse);

@@ -222,7 +222,11 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
 - **The grid is address-driven, not index-driven.** `tableLayoutProvider`
   (`lib/providers/table_layout_provider.dart`) computes RowGroups per request
   item (height = max linked offers across suppliers), an unlinked zone and
-  per-row heights; UI renders groups + zone. Offer identity is `offer.id` —
+  per-row heights; UI renders groups + zone. Offer linking has two strategies
+  in `AppStateNotifier`: **positional** (`linkOffersPositionally`, the default
+  on recognize/paste — k-th offer → k-th request item, skips suppliers that
+  already have any links) and **fuzzy** (`autoLinkOffers`, the toolbar
+  button — name matching only). Offer identity is `offer.id` —
   mutations are `updateOffer`/`removeOfferById`/`createOfferAt`/
   `moveOfferWithinSupplier`/`moveOfferToSupplier`/`linkOffer`; the old
   index-based `reorderOffers`/`moveOfferToEmpty`/`setOfferAt` and the list

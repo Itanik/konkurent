@@ -439,8 +439,8 @@ void main() {
         );
     await tester.pumpAndSettle();
 
-    // Вставляем заявку (3 колонки: заявка полностью заполнена) →
-    // автосопоставление привязывает подходящее, зона схлопывается.
+    // Вставляем заявку (2 строки) → позиционное сопоставление: k-е
+    // предложение → k-я позиция, зона схлопывается.
     await Clipboard.setData(const ClipboardData(
         text: 'Гайка DIN934 М16 кл.пр. 8 цинк\t40\tшт\nБолт М8\t10\tшт'));
     await tapCell(tester, 'fixed.item.0.name');
@@ -448,9 +448,12 @@ void main() {
 
     final state = container.read(appStateProvider);
     final offers = state.suppliers.first.offers;
-    expect(offers[0].linkedRequestItemId, isNotNull,
-        reason: 'гайка должна привязаться к позиции');
-    expect(offers[1].linkedRequestItemId, isNotNull);
+    final r0 = state.requestItems[0].id;
+    final r1 = state.requestItems[1].id;
+    // Позиционно: o1 → позиция 1, o2 → позиция 2.
+    expect(offers[0].linkedRequestItemId, r0,
+        reason: 'k-е предложение привязывается к k-й позиции');
+    expect(offers[1].linkedRequestItemId, r1);
     // Подсветка свежесопоставленных.
     expect(container.read(recentlyLinkedProvider),
         containsAll(['o1', 'o2']));

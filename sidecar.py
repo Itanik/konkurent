@@ -113,12 +113,12 @@ def _num_or_none(value):
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        return round(float(value), 2)
     s = str(value).strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
     if not s or s.lower() in ("nan", "none", "-"):
         return None
     try:
-        return float(s)
+        return round(float(s), 2)
     except (ValueError, TypeError):
         return None
 

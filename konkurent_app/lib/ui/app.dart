@@ -205,9 +205,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         ],
       );
       notifier.addSupplier(supplier);
-      // Если заявка полностью заполнена (название + кол-во + ед.изм у всех
-      // позиций) — сразу сопоставляем предложения с позициями.
-      final linked = notifier.requestFullyFilled ? notifier.autoLinkOffers() : 0;
+      // Позиционное сопоставление по умолчанию: счета обычно повторяют
+      // порядок заявки. Излишки остаются в зоне без привязки.
+      final linked = notifier.linkOffersPositionally();
       _snack('Добавлен поставщик: '
           '${supplier.displayName.isEmpty ? p.basename(path) : supplier.displayName}'
           '${linked > 0 ? ' (сопоставлено позиций: $linked)' : ''}');

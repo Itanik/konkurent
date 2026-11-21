@@ -139,6 +139,56 @@ void main() {
     expect(state().suppliers[1].offers.last.linkedRequestItemId, r0);
   });
 
+  test('linkOffersPositionally: k-е предложение → k-я позиция', () {
+    notifier().updateRequestItem(0, name: 'Первая');
+    notifier().updateRequestItem(1, name: 'Вторая');
+    notifier().updateRequestItem(2, name: 'Третья');
+    final ids = state().requestItems.map((r) => r.id).toList();
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
+      const Offer(id: 'a', itemName: 'позиция счёта 1'),
+      const Offer(id: 'b', itemName: 'позиция счёта 2'),
+      const Offer(id: 'c', itemName: 'позиция счёта 3'),
+    ]));
+
+    final n = notifier().linkOffersPositionally();
+    expect(n, 3);
+    final offers = state().suppliers.first.offers;
+    expect(offers.map((o) => o.linkedRequestItemId).toList(), ids);
+  });
+
+  test('linkOffersPositionally: излишки остаются непривязанными', () {
+    notifier().updateRequestItem(0, name: 'Единственная');
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
+      const Offer(id: 'a', itemName: '1'),
+      const Offer(id: 'b', itemName: '2'),
+    ]));
+    final n = notifier().linkOffersPositionally();
+    expect(n, 1);
+    final offers = state().suppliers.first.offers;
+    expect(offers[0].linkedRequestItemId, isNotNull);
+    expect(offers[1].linkedRequestItemId, isNull);
+  });
+
+  test('linkOffersPositionally не трогает поставщиков с готовыми привязками',
+      () {
+    notifier().updateRequestItem(0, name: 'Первая');
+    notifier().updateRequestItem(1, name: 'Вторая');
+    final rid1 = state().requestItems[1].id;
+    // У поставщика уже есть ручная привязка ко второй позиции.
+    notifier().addSupplier(SupplierBlock(id: 's1', displayName: 'A', offers: [
+      const Offer(id: 'a', itemName: '1'),
+      Offer(id: 'b', itemName: '2', linkedRequestItemId: rid1),
+    ]));
+
+    expect(notifier().linkOffersPositionally(), 0);
+    expect(state().suppliers.first.offers[0].linkedRequestItemId, isNull);
+  });
+
+  test('linkOffersPositionally: пустая заявка — ноль привязок', () {
+    notifier().addSupplier(block('s1', 'A', [100]));
+    expect(notifier().linkOffersPositionally(), 0);
+  });
+
   test('autoLinkOffers сопоставляет по названию, порог отсекает слабые', () {
     notifier().updateRequestItem(0, name: 'Шпилька резьбовая М12 DIN 975');
     notifier().updateRequestItem(1, name: 'Совершенно другая вещь');

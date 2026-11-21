@@ -64,19 +64,21 @@ class Offer {
 
   /// Сумма строки на заданном базисе. Всё, что не введено/не распознано,
   /// выводится через ставку НДС — обе стороны всегда согласованны.
+  /// Вычисленные значения округляются до 2 знаков (не копим хвосты
+  /// вида 40.666666…).
   double? displaySum({required bool withoutVat, required double vat}) {
     final q = qty;
     if (priceDriver == PriceDriver.price) {
       final pr = withoutVat ? _priceNet(vat) : _priceGross(vat);
       if (pr == null || q == null || q == 0) return null;
-      return pr * q;
+      return _round2(pr * q);
     }
     if (withoutVat) {
-      if (sumWithoutVat != null) return sumWithoutVat;
-      return sumWithVat == null ? null : sumWithVat! / (1 + vat);
+      if (sumWithoutVat != null) return _round2(sumWithoutVat!);
+      return sumWithVat == null ? null : _round2(sumWithVat! / (1 + vat));
     }
-    if (sumWithVat != null) return sumWithVat;
-    return sumWithoutVat == null ? null : sumWithoutVat! * (1 + vat);
+    if (sumWithVat != null) return _round2(sumWithVat!);
+    return sumWithoutVat == null ? null : _round2(sumWithoutVat! * (1 + vat));
   }
 
   /// Цена за единицу на заданном базисе (производная от суммы или ввода).
@@ -84,7 +86,7 @@ class Offer {
     final s = displaySum(withoutVat: withoutVat, vat: vat);
     final q = qty;
     if (s == null || q == null || q == 0) return null;
-    return s / q;
+    return _round2(s / q);
   }
 
   /// Правка суммы на заданном базисе: переключает водителя на сумму, вторая
@@ -555,3 +557,7 @@ double? _toDouble(Object? value) {
   if (s.isEmpty) return null;
   return double.tryParse(s);
 }
+
+/// Округление до 2 знаков после запятой — все отображаемые и
+/// экспортируемые числа не копят дробные хвосты.
+double _round2(double v) => (v * 100).roundToDouble() / 100;

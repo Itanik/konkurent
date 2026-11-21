@@ -171,6 +171,45 @@ class AppStateNotifier extends Notifier<AppState> {
     });
   }
 
+  /// Позиционное сопоставление — стратегия по умолчанию: k-е предложение
+  /// поставщика привязывается к k-й позиции заявки (счета обычно повторяют
+  /// порядок заявки, нужна лишь небольшая правка drag'ом). Поставщики, у
+  /// которых уже есть привязки, не трогаются — сохраняем ручную работу;
+  /// излишки (предложений больше, чем позиций) остаются непривязанными.
+  /// Возвращает число новых привязок; свежепривязанные подсвечиваются.
+  int linkOffersPositionally() {
+    if (state.requestItems.isEmpty) return 0;
+    var count = 0;
+    final linkedIds = <String>[];
+    state = state.copyWith(suppliers: [
+      for (final s in state.suppliers)
+        if (s.offers.isNotEmpty &&
+            s.offers.every((o) => o.linkedRequestItemId == null))
+          () {
+            var i = 0;
+            final offers = <Offer>[];
+            for (final o in s.offers) {
+              if (o.isEmpty || i >= state.requestItems.length) {
+                offers.add(o);
+                continue;
+              }
+              offers.add(o.copyWith(
+                  linkedRequestItemId: state.requestItems[i].id));
+              linkedIds.add(o.id);
+              count++;
+              i++;
+            }
+            return s.copyWith(offers: offers);
+          }()
+        else
+          s,
+    ]);
+    if (count > 0) {
+      ref.read(recentlyLinkedProvider.notifier).set(linkedIds);
+    }
+    return count;
+  }
+
   /// Автосопоставление непривязанных предложений с позициями заявки
   /// (нечёткое сравнение названий). Возвращает число новых привязок;
   /// свежепривязанные подсвечиваются (`recentlyLinkedProvider`).
