@@ -125,6 +125,10 @@ konkurent_app/  Flutter Desktop editor (Riverpod + Material 3).
            lib/services/storage_service.dart persists the session as JSON.
            lib/services/app_config_service.dart loads global settings
            (app-config.json: vatRate, maxSuppliers; legal-forms.json).
+           lib/services/supplier_db.dart — SQLite supplier memory by INN
+           (meta history last-5, name autocomplete); opened in main(),
+           provider is null on failure = features off.
+           lib/services/best_offer.dart — best procurement variants per k.
            Full model/UI contract: konkurent_app/SPEC.md
 ```
 
