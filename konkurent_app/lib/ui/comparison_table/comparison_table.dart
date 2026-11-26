@@ -262,6 +262,13 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
       return KeyEventResult.handled;
     }
 
+    // F2 — начать правку выделенной ячейки (как в Excel).
+    if (event.logicalKey == LogicalKeyboardKey.f2) {
+      final f = _selection.focus;
+      if (f != null) _selection.tryEdit(f);
+      return KeyEventResult.handled;
+    }
+
     final moves = <LogicalKeyboardKey, (int, int)>{
       LogicalKeyboardKey.arrowUp: (-1, 0),
       LogicalKeyboardKey.arrowDown: (1, 0),

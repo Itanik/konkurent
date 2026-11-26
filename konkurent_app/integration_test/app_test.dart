@@ -351,6 +351,38 @@ void main() {
     expect(data?.text, '');
   });
 
+  testWidgets('F2 начинает правку выделенной ячейки', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          const SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [Offer(id: 'o1', itemName: 'Болт', qty: 4)],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Выделение кликом, Esc (выйти из правки), F2 — правка снова открыта.
+    await tapCell(tester, 'offer.o1.item');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('offer.o1.item.field')), findsNothing);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.f2);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('offer.o1.item.field')), findsOneWidget);
+
+    await tester.enterText(
+        find.byKey(const ValueKey('offer.o1.item.field')), 'Болт М8');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(
+        container.read(appStateProvider).suppliers.first.offers.first.itemName,
+        'Болт М8');
+  });
+
   testWidgets('Esc выходит из правки, Ctrl+C копирует выделение',
       (tester) async {
     await pumpApp(tester);
