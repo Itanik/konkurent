@@ -113,6 +113,23 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     _dragScrolling = false;
   }
 
+  /// Прокручивает оба вьюпорта так, чтобы сфокусированная ячейка была видна
+  /// (стрелки/Enter/Tab/F2 у краёв экрана). Контекст ячейки знает свои
+  /// Scrollable-предки — вертикальный и горизонтальный.
+  void _ensureFocusedVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _selection.cells[_selection.focus];
+      if (ctx == null || !ctx.mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.1,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   void _onDragTick(Duration elapsed) {
     if (!_dragScrolling || !_vertical.hasClients) return;
     final dt = (elapsed - _dragElapsed).inMicroseconds / 1e6;
@@ -512,6 +529,22 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
           supplierCount: ref.read(appStateProvider).suppliers.length,
         );
     _selection.gridPaste = _pasteGridFrom;
+    // Навигация перепрыгивает объединённые ячейки: группа заявки целиком
+    // (фикс. колонки) или поставщик с одним предложением на группу.
+    _selection.spanResolver = (a) {
+      final layout = ref.read(tableLayoutProvider);
+      final g = layout.groupOfRow(a.r);
+      if (g == null) return null;
+      if (a.b == -1) return (firstRow: g.firstRow, rows: g.rows);
+      final suppliers = ref.read(appStateProvider).suppliers;
+      if (a.b >= suppliers.length) return null;
+      final linked = suppliers[a.b]
+          .offers
+          .where((o) => o.linkedRequestItemId == g.item.id)
+          .length;
+      return linked <= 1 ? (firstRow: g.firstRow, rows: g.rows) : null;
+    };
+    _selection.onMoved = _ensureFocusedVisible;
 
     return SelectionScope(
       notifier: _selection,

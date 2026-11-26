@@ -7,6 +7,9 @@ typedef CellAddress = ({int b, int c, int r});
 
 CellAddress cell(int b, int c, int r) => (b: b, c: c, r: r);
 
+/// Геометрия объединённой ячейки: первая физическая строка и число строк.
+typedef CellSpan = ({int firstRow, int rows});
+
 /// Границы навигации: число строк и колонок по блокам.
 class SelectionBounds {
   const SelectionBounds({
@@ -53,6 +56,17 @@ class SelectionController extends ChangeNotifier {
   /// EditableCell делегирует сюда Ctrl+V с многоколоночным буфером.
   void Function(CellAddress at, String text)? gridPaste;
 
+  /// Геометрия объединённой ячейки (b,c,r): навигация перепрыгивает строки-
+  /// продолжения (визуально целая ячейка из нескольких строк = один шаг).
+  CellSpan? Function(CellAddress a)? spanResolver;
+
+  /// Контексты зарегистрированных ячеек — для прокрутки фокуса в вид.
+  final Map<CellAddress, BuildContext> cells = {};
+
+  /// Вызывается после смещения фокуса: ComparisonTable прокручивает
+  /// вьюпорт к сфокусированной ячейке (обе оси).
+  VoidCallback? onMoved;
+
   void _refreshBounds() {
     final b = boundsProvider?.call();
     if (b != null) bounds = b;
@@ -89,6 +103,8 @@ class SelectionController extends ChangeNotifier {
   }
 
   /// Сдвиг курсора (стрелки/Enter=вниз/Tab=вправо через блоки).
+  /// По вертикали перепрыгивает строки-продолжения объединённых ячеек:
+  /// визуально целая ячейка из нескольких строк — один шаг.
   void move(int dRow, int dCol, {bool extendSelection = false}) {
     _refreshBounds();
     final from = focus;
@@ -97,7 +113,22 @@ class SelectionController extends ChangeNotifier {
     var c = from.c;
     var r = from.r;
 
-    r = (r + dRow).clamp(0, bounds.totalRows - 1);
+    if (dRow != 0) {
+      if (dRow > 0) {
+        final span = spanResolver?.call(from);
+        r = from.r + (span?.rows ?? 1);
+      } else {
+        r = from.r - 1;
+        // Попали в строки-продолжения объединённой ячейки — к её началу.
+        final landed = spanResolver?.call(cell(b, c, r));
+        if (landed != null &&
+            r > landed.firstRow &&
+            r < landed.firstRow + landed.rows) {
+          r = landed.firstRow;
+        }
+      }
+      r = r.clamp(0, bounds.totalRows - 1);
+    }
     if (dCol != 0) {
       c += dCol;
       while (c >= bounds.colsOf(b) && b < bounds.maxBlock) {
@@ -116,6 +147,7 @@ class SelectionController extends ChangeNotifier {
     } else {
       set(next);
     }
+    onMoved?.call();
   }
 
   /// Выделить всё (Ctrl+A).
@@ -137,11 +169,17 @@ class SelectionController extends ChangeNotifier {
         _between(a.r, an.r, fo.r);
   }
 
-  /// Редактируемые ячейки регистрируют колбэк запуска правки.
-  void register(CellAddress a, VoidCallback startEdit) =>
-      _editors[a] = startEdit;
+  /// Редактируемые ячейки регистрируют колбэк запуска правки и контекст
+  /// (для прокрутки фокуса в вид).
+  void register(CellAddress a, VoidCallback startEdit, [BuildContext? cellContext]) {
+    _editors[a] = startEdit;
+    if (cellContext != null) cells[a] = cellContext;
+  }
 
-  void unregister(CellAddress a) => _editors.remove(a);
+  void unregister(CellAddress a) {
+    _editors.remove(a);
+    cells.remove(a);
+  }
 
   /// Запустить правку ячейки (клавиатурный ввод по выделению).
   bool tryEdit(CellAddress a) {

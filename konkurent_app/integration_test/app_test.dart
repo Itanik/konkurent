@@ -383,6 +383,95 @@ void main() {
         'Болт М8');
   });
 
+  testWidgets('стрелки у края экрана прокручивают список', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    container.read(appStateProvider.notifier).addSupplier(
+          SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              for (var i = 0; i < 30; i++)
+                Offer(id: 'o$i', itemName: 'Позиция $i'),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    await tapCell(tester, 'fixed.item.0.name');
+    // 20 шагов вниз, каждый с анимацией прокрутки.
+    for (var i = 0; i < 20; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump(const Duration(milliseconds: 180));
+    }
+    await tester.pumpAndSettle();
+
+    // Строка 19 зоны раньше была за экраном — теперь видна.
+    final rowTop = tester
+        .getTopLeft(find.byKey(const ValueKey('offerRow.s1.zone.18')))
+        .dy;
+    expect(rowTop, lessThan(1000),
+        reason: 'навигация стрелками должна прокручивать список');
+  });
+
+  testWidgets('объединённая ячейка — один шаг стрелки', (tester) async {
+    await pumpApp(tester);
+    final container = containerOf(tester);
+
+    final notifier = container.read(appStateProvider.notifier);
+    notifier.updateRequestItem(0, name: 'Гайка М16');
+    final rid = container.read(appStateProvider).requestItems.first.id;
+    // Поставщик А: 2 строки в группе; поставщик Б: 1 (объединённая) + 1 в зоне.
+    notifier.addSupplier(
+          SupplierBlock(
+            id: 's1',
+            displayName: 'А',
+            offers: [
+              Offer(id: 'a1', itemName: 'Гайка 1', linkedRequestItemId: rid),
+              Offer(id: 'a2', itemName: 'Гайка 2', linkedRequestItemId: rid),
+            ],
+          ),
+        );
+    notifier.addSupplier(
+          SupplierBlock(
+            id: 's2',
+            displayName: 'Б',
+            offers: [
+              Offer(id: 'b1', itemName: 'Гайка М16 целая', linkedRequestItemId: rid),
+              const Offer(id: 'b2', itemName: 'Лишнее'),
+            ],
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    // Фокус на объединённую ячейку поставщика Б (b=1, c=0, строка группы).
+    await tapCell(tester, 'offer.b1.item');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    // Один Down должен перекинуть фокус сразу в зону (мимо «продолжения»).
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    var data = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(data?.text, 'Лишнее',
+        reason: 'один шаг вниз из merge-ячейки — сразу в зону');
+
+    // И один Up — обратно в ячейку группы.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    data = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(data?.text, 'Гайка М16 целая');
+  });
+
   testWidgets('Esc выходит из правки, Ctrl+C копирует выделение',
       (tester) async {
     await pumpApp(tester);

@@ -91,7 +91,7 @@ class _EditableCellState extends State<EditableCell> {
   void _register() {
     final a = widget.address;
     if (a != null && _selection != null) {
-      _selection!.register(a, _startEdit);
+      _selection!.register(a, _startEdit, context);
     }
   }
 
