@@ -14,8 +14,11 @@ import '../providers/session_provider.dart';
 import '../providers/zoom_provider.dart';
 import '../services/app_config_service.dart';
 import '../services/python_bridge.dart';
+import '../services/supplier_db.dart';
+import '../ui/constants.dart';
 import 'app_toolbar.dart';
 import 'comparison_table/comparison_table.dart';
+import 'dialogs/invoice_merge_dialog.dart';
 import 'dialogs/new_session_dialog.dart';
 import 'dialogs/session_confirm_dialog.dart';
 import 'zoom_scope.dart';
@@ -190,12 +193,13 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
     if (!mounted) return;
     final notifier = ref.read(appStateProvider.notifier);
+    final db = ref.read(supplierDbProvider);
     if (rec.ok && rec.supplier != null) {
       // Нормализуем распознанные единицы по словарю (тн/м.п/… → т/м);
       // несопоставившиеся остаются как есть и подсвечиваются в сетке.
       final units =
           ref.read(appConfigProvider).value?.units ?? const UnitsDict({});
-      final supplier = rec.supplier!.copyWith(
+      var supplier = rec.supplier!.copyWith(
         offers: [
           for (final o in rec.supplier!.offers)
             o.unit.isEmpty ? o : (() {
@@ -204,13 +208,92 @@ class _AppShellState extends ConsumerState<AppShell> {
                 })(),
         ],
       );
-      notifier.addSupplier(supplier);
-      // Позиционное сопоставление по умолчанию: счета обычно повторяют
-      // порядок заявки. Излишки остаются в зоне без привязки.
-      final linked = notifier.linkOffersPositionally();
-      _snack('Добавлен поставщик: '
-          '${supplier.displayName.isEmpty ? p.basename(path) : supplier.displayName}'
-          '${linked > 0 ? ' (сопоставлено позиций: $linked)' : ''}');
+
+      // Память поставщиков: знакомый ИНН — автозаполнение пустых мета
+      // последними значениями и названием из БД.
+      if (db != null && supplier.inn != null) {
+        final record = db.getByInn(supplier.inn!);
+        if (record != null) {
+          if (supplier.displayName.isEmpty && record.name.isNotEmpty) {
+            supplier = supplier.copyWith(displayName: record.name);
+          }
+          var meta = supplier.meta;
+          for (final row in kMetaRows) {
+            if (row.key == 'comment') continue;
+            if (meta.value(row.key).isEmpty) {
+              final last = db.lastMeta(supplier.inn!, row.key);
+              if (last != null) meta = meta.copyWithValue(row.key, last);
+            }
+          }
+          supplier = supplier.copyWith(meta: meta);
+        }
+      }
+
+      // Счёт от уже известного поставщика (совпал ИНН)?
+      final existing = supplier.inn == null
+          ? null
+          : ref
+              .read(appStateProvider)
+              .suppliers
+              .where((s) => s.inn == supplier.inn)
+              .firstOrNull;
+      if (existing == null) {
+        notifier.addSupplier(supplier);
+        // Позиционное сопоставление по умолчанию: счета обычно повторяют
+        // порядок заявки. Излишки остаются в зоне без привязки.
+        final linked = notifier.linkOffersPositionally();
+        db?.upsertSupplier(
+            inn: supplier.inn ?? '', name: supplier.displayName);
+        _snack('Добавлен поставщик: '
+            '${supplier.displayName.isEmpty ? p.basename(path) : supplier.displayName}'
+            '${linked > 0 ? ' (сопоставлено позиций: $linked)' : ''}');
+        return;
+      }
+
+      if (notifier.isDuplicateInvoice(existing, supplier)) {
+        _snack('Точный дубль счёта от ${existing.displayName} — пропущен');
+        return;
+      }
+
+      if (!notifier.offersIntersect(existing, supplier)) {
+        // Без пересечений — тихое слияние в тот же блок.
+        notifier.mergeIntoSupplier(targetId: existing.id, incoming: supplier);
+        db?.upsertSupplier(inn: supplier.inn!, name: existing.displayName);
+        _snack('Счёт добавлен к поставщику ${existing.displayName}');
+        return;
+      }
+
+      final choice = await showInvoiceMergeDialog(
+          context,
+          existing.displayName.isEmpty
+              ? p.basename(path)
+              : existing.displayName);
+      if (!mounted || choice == null) return;
+      switch (choice) {
+        case InvoiceMergeChoice.update:
+          notifier.updateSupplierInvoice(
+              targetId: existing.id, incoming: supplier);
+          _snack('Блок ${existing.displayName} обновлён из счёта');
+        case InvoiceMergeChoice.alternative:
+          final base = supplier.displayName.isEmpty
+              ? existing.displayName
+              : supplier.displayName;
+          final apCount = ref
+              .read(appStateProvider)
+              .suppliers
+              .where((s) => s.displayName.startsWith('$base (АП'))
+              .length;
+          final name =
+              apCount == 0 ? '$base (АП)' : '$base (АП ${apCount + 1})';
+          notifier.addSupplier(supplier.copyWith(displayName: name));
+          notifier.linkOffersPositionally();
+          _snack('Альтернативное предложение добавлено: $name');
+        case InvoiceMergeChoice.separate:
+          notifier.addSupplier(supplier);
+          notifier.linkOffersPositionally();
+          _snack('Добавлен отдельный блок: ${supplier.displayName}');
+      }
+      db?.upsertSupplier(inn: supplier.inn ?? '', name: supplier.displayName);
     } else {
       _snack('Не удалось распознать ${p.basename(path)}: ${rec.error}');
     }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/app_state.dart';
 import '../providers/recently_linked_provider.dart';
 import '../services/app_config_service.dart';
+import '../services/supplier_db.dart';
 import '../utils/fuzzy_match.dart';
 
 class AppStateNotifier extends Notifier<AppState> {
@@ -49,10 +50,18 @@ class AppStateNotifier extends Notifier<AppState> {
   }
 
   void setSupplierInn(String id, String inn) {
+    final clean = inn.trim();
     _updateSupplier(
       id,
-      (s) => s.copyWith(inn: inn.trim().isEmpty ? null : inn.trim()),
+      (s) => s.copyWith(inn: clean.isEmpty ? null : clean),
     );
+    // Ручной ввод ИНН связывает блок с БД поставщиков.
+    if (clean.isNotEmpty) {
+      final db = ref.read(supplierDbProvider);
+      final name =
+          state.suppliers.where((s) => s.id == id).firstOrNull?.displayName;
+      Future(() => db?.upsertSupplier(inn: clean, name: name ?? ''));
+    }
   }
 
   /// Флажок «без НДС»: переключает базис блока и перекидывает введённые
@@ -381,6 +390,15 @@ class AppStateNotifier extends Notifier<AppState> {
       supplierId,
       (s) => s.copyWith(meta: s.meta.copyWithValue(key, value)),
     );
+    // История мета-полей в БД (последние 5, комментарий не запоминаем).
+    final inn = state.suppliers
+        .where((s) => s.id == supplierId)
+        .firstOrNull
+        ?.inn;
+    if (inn != null && inn.isNotEmpty) {
+      final db = ref.read(supplierDbProvider);
+      Future(() => db?.recordMeta(inn, key, value));
+    }
   }
 
   // --- позиции заявки -------------------------------------------------------
@@ -417,6 +435,115 @@ class AppStateNotifier extends Notifier<AppState> {
         for (final s in state.suppliers) if (s.id == id) transform(s) else s,
       ],
     );
+  }
+
+  // --- счета одного поставщика ------------------------------------------------
+
+  /// Есть ли пересечение позиций между имеющимся блоком и входящим счётом
+  /// (нечёткое совпадение названий хотя бы одной пары).
+  bool offersIntersect(SupplierBlock existing, SupplierBlock incoming) {
+    final candidates = existing.offers
+        .where((o) => o.itemName.trim().isNotEmpty)
+        .map((o) => (id: o.id, name: o.itemName))
+        .toList();
+    return incoming.offers.any(
+        (o) => o.itemName.trim().isNotEmpty && bestMatch(o.itemName, candidates) != null);
+  }
+
+  /// Точный дубль счёта: каждое входящее предложение находит по названию
+  /// имеющееся с той же суммой (± округление) — второй раз платить не нужно.
+  bool isDuplicateInvoice(SupplierBlock existing, SupplierBlock incoming) {
+    final incomingReal =
+        incoming.offers.where((o) => !o.isEmpty).toList();
+    if (incomingReal.isEmpty) return false;
+    final candidates = existing.offers
+        .where((o) => !o.isEmpty)
+        .map((o) => (id: o.id, name: o.itemName))
+        .toList();
+    for (final io in incomingReal) {
+      final m = bestMatch(io.itemName, candidates);
+      if (m == null) return false;
+      final twin =
+          existing.offers.firstWhere((o) => o.id == m.$1);
+      final a = io.displaySum(withoutVat: false, vat: 0.0) ?? 0;
+      final b = twin.displaySum(withoutVat: false, vat: 0.0) ?? 0;
+      if ((a - b).abs() > 0.01) return false;
+    }
+    return true;
+  }
+
+  /// Тихое слияние счёта без пересечений: непривязанные предложения
+  /// входящего добавляются в конец блока, файлы-источники пополняются,
+  /// мета не трогается. Новые предложения привязываются по названиям.
+  void mergeIntoSupplier({
+    required String targetId,
+    required SupplierBlock incoming,
+  }) {
+    _updateSupplier(targetId, (s) {
+      final fresh = incoming.offers
+          .where((o) => !o.isEmpty)
+          .map((o) => o.copyWith(clearLink: true))
+          .toList();
+      final files = {...s.sourceFileNames, ...incoming.sourceFileNames};
+      return s.copyWith(
+        offers: [...s.offers, ...fresh],
+        sourceFileNames: files.toList(growable: false),
+      );
+    });
+    autoLinkOffers();
+  }
+
+  /// «Обновить блок»: совпавшие по названиям предложения перезаписываются
+  /// значениями входящего счёта (привязка строки сохраняется), отсутствующие
+  /// во входящем — удаляются, новые — добавляются в конец. Файлы-источники
+  /// пополняются.
+  void updateSupplierInvoice({
+    required String targetId,
+    required SupplierBlock incoming,
+  }) {
+    _updateSupplier(targetId, (s) {
+      final offers = [...s.offers];
+      final matched = <String>{};
+      for (final io in incoming.offers) {
+        if (io.isEmpty) continue;
+        final candidates = offers
+            .where((o) => !o.isEmpty)
+            .map((o) => (id: o.id, name: o.itemName))
+            .toList();
+        final m = bestMatch(io.itemName, candidates);
+        if (m != null) {
+          final idx = offers.indexWhere((o) => o.id == m.$1);
+          final old = offers[idx];
+          offers[idx] = io.copyWith(
+            itemName: io.itemName,
+            qty: io.qty,
+            clearQty: io.qty == null,
+            unit: io.unit,
+            sumWithVat: io.sumWithVat,
+            clearSumWithVat: io.sumWithVat == null,
+            sumWithoutVat: io.sumWithoutVat,
+            clearSumWithoutVat: io.sumWithoutVat == null,
+            priceWithVat: io.priceWithVat,
+            clearPriceWithVat: io.priceWithVat == null,
+            priceWithoutVat: io.priceWithoutVat,
+            clearPriceWithoutVat: io.priceWithoutVat == null,
+            priceDriver: io.priceDriver,
+            linkedRequestItemId: old.linkedRequestItemId,
+            clearLink: old.linkedRequestItemId == null,
+          );
+          matched.add(m.$1);
+        } else {
+          offers.add(io);
+        }
+      }
+      offers.removeWhere(
+          (o) => !o.isEmpty && !matched.contains(o.id));
+      final files = {...s.sourceFileNames, ...incoming.sourceFileNames};
+      return s.copyWith(
+        offers: _trimTrailingOffers(offers),
+        sourceFileNames: files.toList(growable: false),
+      );
+    });
   }
 }
 
