@@ -38,7 +38,8 @@ abstract class FileEngine {
 
   Future<ImportOutcome> importFile(String filePath);
 
-  Future<ExportOutcome> export(AppState state, String outputPath);
+  Future<ExportOutcome> export(AppState state, String outputPath,
+      {List<Map<String, dynamic>>? bestVariants});
 }
 
 class PythonBridge implements FileEngine {
@@ -232,11 +233,14 @@ class PythonBridge implements FileEngine {
   }
 
   @override
-  Future<ExportOutcome> export(AppState state, String outputPath) async {
+  Future<ExportOutcome> export(AppState state, String outputPath,
+      {List<Map<String, dynamic>>? bestVariants}) async {
     try {
+      final payload = state.toJson();
+      if (bestVariants != null) payload['bestVariants'] = bestVariants;
       final result = await _run(
         ['--action=export', '--output=$outputPath'],
-        stdin: jsonEncode(state.toJson()),
+        stdin: jsonEncode(payload),
       );
       final json = _parseJson(result.stdout as String);
       if (json == null || json['status'] != 'ok') {

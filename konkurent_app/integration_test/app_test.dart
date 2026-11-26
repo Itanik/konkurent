@@ -11,6 +11,7 @@ import 'package:konkurent_app/providers/session_provider.dart';
 import 'package:konkurent_app/providers/zoom_provider.dart';
 import 'package:konkurent_app/services/python_bridge.dart';
 import 'package:konkurent_app/services/storage_service.dart';
+import 'package:konkurent_app/services/supplier_db.dart';
 import 'package:konkurent_app/ui/app.dart';
 import 'package:konkurent_app/ui/comparison_table/comparison_table.dart';
 
@@ -32,7 +33,8 @@ class FakeFileEngine implements FileEngine {
       importResult ?? const ImportOutcome(status: ImportStatus.foreign);
 
   @override
-  Future<ExportOutcome> export(AppState state, String outputPath) async =>
+  Future<ExportOutcome> export(AppState state, String outputPath,
+          {List<Map<String, dynamic>>? bestVariants}) async =>
       exportResult ?? ExportOutcome(ok: true, path: outputPath);
 }
 
@@ -46,6 +48,10 @@ Future<void> pumpApp(WidgetTester tester, {FakeFileEngine? engine}) async {
       overrides: [
         fileEngineProvider.overrideWithValue(engine ?? FakeFileEngine()),
         storageServiceProvider.overrideWithValue(InMemoryStorageService()),
+        // БД поставщиков in-memory; если нативная библиотека недоступна —
+        // null (фичи памяти просто выключены).
+        supplierDbProvider
+            .overrideWithValue(SupplierDb.openInMemory()),
       ],
       child: const KonkurentApp(),
     ),

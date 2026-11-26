@@ -12,6 +12,7 @@ import '../../utils/format.dart';
 import '../../providers/table_layout_provider.dart';
 import 'fixed_panel.dart';
 import 'drag_types.dart';
+import 'best_variant_panel.dart';
 import 'selection_controller.dart';
 import 'supplier_column.dart';
 
@@ -135,8 +136,10 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     final dt = (elapsed - _dragElapsed).inMicroseconds / 1e6;
     _dragElapsed = elapsed;
     if (dt <= 0) return;
-    final next = (_vertical.offset + _dragVelocity * dt)
-        .clamp(0.0, _vertical.position.maxScrollExtent);
+    final next = (_vertical.offset + _dragVelocity * dt).clamp(
+      0.0,
+      _vertical.position.maxScrollExtent,
+    );
     _vertical.jumpTo(next);
   }
 
@@ -172,15 +175,21 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     final dy = _pointer.dy - _anchor.dy;
 
     if (_vertical.hasClients && dy.abs() > deadzone) {
-      final speed = (dy.abs() - deadzone) * speedFactor * (dy.isNegative ? -1.0 : 1.0);
-      final next = (_vertical.offset + speed * dt)
-          .clamp(0.0, _vertical.position.maxScrollExtent);
+      final speed =
+          (dy.abs() - deadzone) * speedFactor * (dy.isNegative ? -1.0 : 1.0);
+      final next = (_vertical.offset + speed * dt).clamp(
+        0.0,
+        _vertical.position.maxScrollExtent,
+      );
       _vertical.jumpTo(next);
     }
     if (_horizontal.hasClients && dx.abs() > deadzone) {
-      final speed = (dx.abs() - deadzone) * speedFactor * (dx.isNegative ? -1.0 : 1.0);
-      final next = (_horizontal.offset + speed * dt)
-          .clamp(0.0, _horizontal.position.maxScrollExtent);
+      final speed =
+          (dx.abs() - deadzone) * speedFactor * (dx.isNegative ? -1.0 : 1.0);
+      final next = (_horizontal.offset + speed * dt).clamp(
+        0.0,
+        _horizontal.position.maxScrollExtent,
+      );
       _horizontal.jumpTo(next);
     }
   }
@@ -200,8 +209,10 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     final keyboard = HardwareKeyboard.instance;
     if (!keyboard.isShiftPressed || keyboard.isControlPressed) return;
     if (!_horizontal.hasClients) return;
-    final next = (_horizontal.offset + event.scrollDelta.dy)
-        .clamp(0.0, _horizontal.position.maxScrollExtent);
+    final next = (_horizontal.offset + event.scrollDelta.dy).clamp(
+      0.0,
+      _horizontal.position.maxScrollExtent,
+    );
     _horizontal.jumpTo(next);
   }
 
@@ -300,8 +311,13 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
       final (dr, dc) = move;
       final shift = kb.isShiftPressed;
       // Tab со Shift — влево, Enter/стрелки со Shift — протяжка выделения.
-      _selection.move(dr, dc == 1 && shift && event.logicalKey == LogicalKeyboardKey.tab ? -1 : dc,
-          extendSelection: shift && event.logicalKey != LogicalKeyboardKey.tab);
+      _selection.move(
+        dr,
+        dc == 1 && shift && event.logicalKey == LogicalKeyboardKey.tab
+            ? -1
+            : dc,
+        extendSelection: shift && event.logicalKey != LogicalKeyboardKey.tab,
+      );
       return KeyEventResult.handled;
     }
 
@@ -387,8 +403,7 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
             for (var c = c0; c <= c1; c++) _cellValue(cell(b, c, r)) ?? '',
         ],
     ];
-    await Clipboard.setData(
-        ClipboardData(text: ClipboardGrid.build(grid)));
+    await Clipboard.setData(ClipboardData(text: ClipboardGrid.build(grid)));
   }
 
   Future<void> _pasteClipboard() async {
@@ -410,8 +425,12 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     for (var i = 0; i < grid.length; i++) {
       final row = grid[i];
       for (var j = 0; j < row.length; j++) {
-        _applyCell(cell(at.b, at.c + j, at.r + i), row[j], notifier,
-            isLastSourceColumn: j == row.length - 1);
+        _applyCell(
+          cell(at.b, at.c + j, at.r + i),
+          row[j],
+          notifier,
+          isLastSourceColumn: j == row.length - 1,
+        );
       }
     }
     if (at.b == -1) {
@@ -421,8 +440,12 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     }
   }
 
-  void _applyCell(CellAddress a, String value, AppStateNotifier notifier,
-      {bool isLastSourceColumn = false}) {
+  void _applyCell(
+    CellAddress a,
+    String value,
+    AppStateNotifier notifier, {
+    bool isLastSourceColumn = false,
+  }) {
     final state = ref.read(appStateProvider);
     // Свежая раскладка: предыдущие ячейки вставки уже могли дорастить сетку.
     final layout = ref.read(tableLayoutProvider);
@@ -489,8 +512,7 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
               : null;
           if (split != null && split.$2.isNotEmpty) {
             final n = parseNumber(split.$1);
-            return o.copyWith(
-                qty: n, clearQty: n == null, unit: split.$2);
+            return o.copyWith(qty: n, clearQty: n == null, unit: split.$2);
           }
           final n = parseNumber(value);
           return o.copyWith(qty: n, clearQty: n == null);
@@ -499,8 +521,11 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
         case 3:
           return o.withPriceInput(parseNumber(value), withoutVat: s.withoutVat);
         default:
-          return o.withSumInput(parseNumber(value),
-              withoutVat: s.withoutVat, vat: vat);
+          return o.withSumInput(
+            parseNumber(value),
+            withoutVat: s.withoutVat,
+            vat: vat,
+          );
       }
     }
 
@@ -519,15 +544,17 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
     final layout = ref.watch(tableLayoutProvider);
     final notifier = ref.read(appStateProvider.notifier);
 
-    _selection.setBounds(SelectionBounds(
-      totalRows: layout.totalRows,
-      supplierCount: state.suppliers.length,
-    ));
+    _selection.setBounds(
+      SelectionBounds(
+        totalRows: layout.totalRows,
+        supplierCount: state.suppliers.length,
+      ),
+    );
     _selection.keyFocus = _tableFocus;
     _selection.boundsProvider = () => SelectionBounds(
-          totalRows: ref.read(tableLayoutProvider).totalRows,
-          supplierCount: ref.read(appStateProvider).suppliers.length,
-        );
+      totalRows: ref.read(tableLayoutProvider).totalRows,
+      supplierCount: ref.read(appStateProvider).suppliers.length,
+    );
     _selection.gridPaste = _pasteGridFrom;
     // Навигация перепрыгивает объединённые ячейки: группа заявки целиком
     // (фикс. колонки) или поставщик с одним предложением на группу.
@@ -538,8 +565,7 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
       if (a.b == -1) return (firstRow: g.firstRow, rows: g.rows);
       final suppliers = ref.read(appStateProvider).suppliers;
       if (a.b >= suppliers.length) return null;
-      final linked = suppliers[a.b]
-          .offers
+      final linked = suppliers[a.b].offers
           .where((o) => o.linkedRequestItemId == g.item.id)
           .length;
       return linked <= 1 ? (firstRow: g.firstRow, rows: g.rows) : null;
@@ -556,57 +582,73 @@ class _ComparisonTableState extends ConsumerState<ComparisonTable>
           onPointerDown: _onPointerDown,
           onPointerSignal: _onPointerSignal,
           child: MouseRegion(
-            cursor:
-                _autoscroll ? SystemMouseCursors.allScroll : MouseCursor.defer,
+            cursor: _autoscroll
+                ? SystemMouseCursors.allScroll
+                : MouseCursor.defer,
             onHover: (event) => _pointer = event.position,
             child: SingleChildScrollView(
               controller: _vertical,
               scrollDirection: Axis.vertical,
-              child: Row(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const FixedPanel(),
-                  Expanded(
-                    child: state.suppliers.isEmpty
-                        ? _EmptyState(onAdd: () {
-                            notifier.addSupplier(SupplierBlock.empty());
-                          })
-                        : SingleChildScrollView(
-                            key: const ValueKey('suppliers.horizontalScroll'),
-                            controller: _horizontal,
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                for (var i = 0;
-                                    i < state.suppliers.length;
-                                    i++)
-                                  DragTarget<SupplierDrag>(
-                                    onWillAcceptWithDetails: (details) =>
-                                        details.data.supplierId !=
-                                        state.suppliers[i].id,
-                                    onMove: (details) =>
-                                        _onDragMove(i, details.data),
-                                    onLeave: (data) => _onDragLeave(i),
-                                    onAcceptWithDetails: (details) =>
-                                        _onDragAccept(i, details.data),
-                                    builder: (context, candidates, rejected) {
-                                      return _withInsertPreview(
-                                        context,
-                                        i,
-                                        SupplierColumn(
-                                          supplierId: state.suppliers[i].id,
-                                          index: i,
-                                          onDragUpdate: _onTableDragUpdate,
-                                          onDragEnd: _stopDragScroll,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const FixedPanel(),
+                      Expanded(
+                        child: state.suppliers.isEmpty
+                            ? _EmptyState(
+                                onAdd: () {
+                                  notifier.addSupplier(SupplierBlock.empty());
+                                },
+                              )
+                            : SingleChildScrollView(
+                                key: const ValueKey(
+                                  'suppliers.horizontalScroll',
+                                ),
+                                controller: _horizontal,
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    for (
+                                      var i = 0;
+                                      i < state.suppliers.length;
+                                      i++
+                                    )
+                                      DragTarget<SupplierDrag>(
+                                        onWillAcceptWithDetails: (details) =>
+                                            details.data.supplierId !=
+                                            state.suppliers[i].id,
+                                        onMove: (details) =>
+                                            _onDragMove(i, details.data),
+                                        onLeave: (data) => _onDragLeave(i),
+                                        onAcceptWithDetails: (details) =>
+                                            _onDragAccept(i, details.data),
+                                        builder:
+                                            (context, candidates, rejected) {
+                                              return _withInsertPreview(
+                                                context,
+                                                i,
+                                                SupplierColumn(
+                                                  supplierId:
+                                                      state.suppliers[i].id,
+                                                  index: i,
+                                                  onDragUpdate:
+                                                      _onTableDragUpdate,
+                                                  onDragEnd: _stopDragScroll,
+                                                ),
+                                              );
+                                            },
+                                      ),
+                                  ],
+                                ),
+                              ),
+                      ),
+                    ],
                   ),
+                  const BestVariantPanel(),
                 ],
               ),
             ),
@@ -655,13 +697,18 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.table_chart_outlined,
-              size: 64, color: Theme.of(context).colorScheme.outline),
+          Icon(
+            Icons.table_chart_outlined,
+            size: 64,
+            color: Theme.of(context).colorScheme.outline,
+          ),
           const SizedBox(height: 16),
           const Text('Таблица пуста'),
           const SizedBox(height: 8),
-          const Text('Перетащите счёт или добавьте поставщика вручную',
-              textAlign: TextAlign.center),
+          const Text(
+            'Перетащите счёт или добавьте поставщика вручную',
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 16),
           FilledButton.icon(
             key: const ValueKey('empty.addSupplier'),

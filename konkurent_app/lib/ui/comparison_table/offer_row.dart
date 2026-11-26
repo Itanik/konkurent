@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
+import '../../providers/best_variant_provider.dart';
 import '../../providers/recently_linked_provider.dart';
 import '../../providers/zoom_provider.dart';
 import '../../services/app_config_service.dart';
@@ -82,6 +83,12 @@ class OfferRow extends ConsumerWidget {
     final showSecondary = ref.watch(showSumWithoutVatProvider) && !withoutVat;
     final recentlyLinked =
         current != null && ref.watch(recentlyLinkedProvider).contains(current.id);
+    // Вариант закупки: подсветка сумм выигравших предложений.
+    final variantHit = current != null &&
+        ref
+            .watch(variantHighlightProvider)
+            .offerIds
+            .contains(current.id);
     final hasContent = current != null && !current.isEmpty;
     final keyBase = current != null
         ? 'offer.${current.id}'
@@ -107,6 +114,9 @@ class OfferRow extends ConsumerWidget {
     Widget sumCell({required bool net, required double width}) => GridBox(
           width: width,
           height: rowHeight,
+          color: variantHit
+              ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5)
+              : null,
           child: EditableCell(
             testId: net ? '$keyBase.sumNet' : '$keyBase.sum',
             value: formatEditable(

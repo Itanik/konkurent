@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_state.dart';
 import '../../providers/app_state_provider.dart';
+import '../../providers/best_variant_provider.dart';
 import '../../providers/table_layout_provider.dart';
 import '../../providers/zoom_provider.dart';
 import '../../providers/view_preferences_provider.dart';
 import '../../services/app_config_service.dart';
+import '../../services/supplier_db.dart';
 import '../../utils/format.dart';
 import '../constants.dart';
 import 'drag_types.dart';
@@ -45,6 +47,11 @@ class SupplierColumn extends ConsumerWidget {
     final vat = ref.watch(appConfigProvider).value?.vatRate ?? 0.22;
 
     final supplier = state.suppliers.firstWhere((s) => s.id == supplierId);
+    final db = ref.watch(supplierDbProvider);
+    final variantHit = ref
+        .watch(variantHighlightProvider)
+        .supplierIds
+        .contains(supplierId);
     final headerStyle = Theme.of(context).textTheme.titleSmall;
     final secondaryVisible = showSecondary && !supplier.withoutVat;
     final width = sumsOnly
@@ -74,8 +81,8 @@ class SupplierColumn extends ConsumerWidget {
     }
 
     final children = <Widget>[
-      _headerBox(
-          context, m, width, supplier, coverage, headerStyle, notifier),
+      _headerBox(context, m, width, supplier, coverage, headerStyle, notifier,
+          db, variantHit: variantHit),
       if (sumsOnly)
         _subHeader(context, m, 'Сумма', width, TextAlign.right)
       else ...[
@@ -173,6 +180,10 @@ class SupplierColumn extends ConsumerWidget {
           testId: 'supplier.$supplierId.meta.${kMetaRows[j].key}',
           value: supplier.meta.value(kMetaRows[j].key),
           textAlign: TextAlign.center,
+          // История поля из БД (последние 5) для известного поставщика.
+          suggestions: db == null || supplier.inn == null
+              ? null
+              : db.metaHistory(supplier.inn!, kMetaRows[j].key).toSet(),
           onChanged: (v) => notifier.setMeta(supplierId, kMetaRows[j].key, v),
         ),
       ));
@@ -200,14 +211,19 @@ class SupplierColumn extends ConsumerWidget {
       SupplierBlock supplier,
       ({int covered, int total}) coverage,
       TextStyle? headerStyle,
-      AppStateNotifier notifier) {
+      AppStateNotifier notifier,
+      SupplierDb? db, {
+      bool variantHit = false,
+    }) {
     final coverageText = coverage.total > 0
         ? ' (${coverage.covered}/${coverage.total})'
         : '';
     return GridBox(
       width: width,
       height: m.headerRowHeight,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: variantHit
+          ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45)
+          : Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: 2 * m.scale),
         child: Column(
@@ -245,6 +261,8 @@ class SupplierColumn extends ConsumerWidget {
                       value: supplier.displayName,
                       padding:
                           EdgeInsets.symmetric(horizontal: 2 * m.scale),
+                      // Автодополнение названия из БД поставщиков.
+                      suggestions: db?.searchNames('').toSet(),
                       onChanged: (v) =>
                           notifier.renameSupplier(supplier.id, v),
                     ),

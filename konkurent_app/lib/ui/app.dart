@@ -11,9 +11,11 @@ import '../models/app_state.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/services.dart';
 import '../providers/session_provider.dart';
+import '../providers/table_layout_provider.dart';
 import '../providers/zoom_provider.dart';
 import '../services/app_config_service.dart';
 import '../services/python_bridge.dart';
+import '../services/best_offer.dart';
 import '../services/supplier_db.dart';
 import '../ui/constants.dart';
 import 'app_toolbar.dart';
@@ -319,7 +321,39 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
     if (location == null) return false;
 
-    final outcome = await _engine.export(state, location.path);
+    // Лучшие варианты закупки: движок запишет их строками под итогом
+    // (название варианта + =SUM по выигравшим ячейкам сумм).
+    final config = ref.read(appConfigProvider).value;
+    final variants = bestProcurementVariants(state,
+        vat: config?.vatRate ?? 0.22,
+        maxSuppliers: config?.maxSuppliers ?? 3);
+    final layout = ref.read(tableLayoutProvider);
+    const excelDataStart = 5; // строки 1-4: заявка/ИНН/файлы/заголовки
+    const blockStart = 5; // первая колонка блока поставщика
+    const blockSize = 6; // Предложено..Сумма с НДС
+    final bestVariants = <Map<String, dynamic>>[];
+    for (final v in variants) {
+      final cells = <List<int>>[];
+      v.picks.forEach((itemIdx, supplierIdx) {
+        final g = layout.groups[itemIdx];
+        final s = state.suppliers[supplierIdx];
+        final linked = s.offers
+            .where((o) => o.linkedRequestItemId == g.item.id)
+            .toList();
+        for (var j = 0; j < linked.length; j++) {
+          final r = g.firstRow + (linked.length > 1 ? j : 0);
+          final col = blockStart + blockSize * supplierIdx + blockSize - 1;
+          cells.add([col, excelDataStart + r]);
+        }
+      });
+      bestVariants.add({
+        'label': '${v.label}${v.coverageSuffix}',
+        'cells': cells,
+      });
+    }
+
+    final outcome =
+        await _engine.export(state, location.path, bestVariants: bestVariants);
     if (outcome.ok) {
       _markClean();
       await ref.read(storageServiceProvider).clear();
