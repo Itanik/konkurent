@@ -303,6 +303,12 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
 - `flutter test` runs unit tests only; UI tests live in `integration_test/` and
   need `-d linux` (they open a window). Unit tests for `sidecar.py` shell out to
   `../.venv/bin/python3`; they skip themselves if `.venv` is absent.
+- **`markTestSkipped()` does NOT stop the test body** — it only marks the test
+  skipped while the code keeps running; if the body then fails, the test is
+  reported as FAILED, not skipped. Always `return;` right after it. This cost a
+  broken v1.0.10 Windows CI run: the OCR test marked itself skipped on the
+  tesseract-less Windows runner, then still ran `bridge.recognize` and failed
+  on the «Tesseract не найден» error.
 - State lives in `appStateProvider` (Riverpod `Notifier`); persistence is a
   debounced JSON write via `storageServiceProvider`. Tests override both
   `storageServiceProvider` and `fileEngineProvider`. Never call Python from tests.
