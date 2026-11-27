@@ -81,6 +81,28 @@ stdout elsewhere).
   `--legal-forms` points at `legal-forms.json` in app-support (created by
   `AppConfigService` on first launch).
 
+## Feature workflow
+
+The standard loop for any change — follow it without being told:
+
+- **Small fix** (bug, tweak): branch `fix/*` → code + tests → verification →
+  merge to `main`, delete branch.
+- **Large feature**: start in plan mode — explore via subagents (they read
+  code in their own windows and return summaries, keeping the main context
+  lean), ask the user only at real decision forks, get the plan approved.
+  Then one branch `feat/*`, conventional commits per meaningful unit
+  (engine / Flutter / docs separately).
+- **Verification before every merge** (the gate): `flutter analyze` (0
+  issues) + `flutter test` + `flutter test integration_test -d linux` +
+  Python `ast`/import checks; for recognition changes, run the sidecar over
+  the krep fixtures. Tests are written together with the code, not after.
+- **Docs are part of the change**: SPEC.md always, an AGENTS.md gotcha for
+  anything non-obvious, READMEs for user-visible changes — same branch.
+- **Merge to `main`, then stop.** Never push or tag unprompted: the user
+  manually tests on real invoices first; their feedback becomes fix rounds
+  (same loop), and the release (tag `v1.0.x` + pubspec bump to match) happens
+  only when the user asks to fix/release the version.
+
 ## Verification workflow
 
 - `example_data/` is gitignored — it is your local fixture folder (PDFs to feed
