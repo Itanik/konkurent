@@ -8,3 +8,5 @@ dist/
 build/
 *.spec
 example_data/
+# Модели tesseract качаются (README: tessdata_fast/best), в бандл идут через CI
+tessdata/
