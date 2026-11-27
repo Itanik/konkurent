@@ -42,6 +42,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ghostscript libgtk-3-dev liblzma-dev ninja-build cmake clang pkg-config
+          # tesseract + русская модель: OCR-тест сайдкара и распознавание сканов
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-rus
 
       - name: Build Python sidecar
         shell: bash
@@ -53,6 +55,13 @@ jobs:
             PY=".venv/Scripts/python.exe"; PIP=".venv/Scripts/pip.exe"
           fi
           "$PIP" install -r requirements.txt pyinstaller
+          # Модели tesseract для OCR сканов: fast (числа/юниты/текст) и best
+          # (имена с латиницей) — кладём в бандл, от системной установки не зависим.
+          mkdir -p tessdata
+          curl -sL -o tessdata/rus.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/rus.traineddata
+          curl -sL -o tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+          curl -sL -o tessdata/rus_best.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/rus.traineddata
+          curl -sL -o tessdata/eng_best.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/eng.traineddata
           if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; EXT="pyd"; else SEP=":"; EXT="so"; fi
           SITE=$("$PY" -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
           MYPYC=$(ls "$SITE"/*__mypyc*."$EXT" 2>/dev/null | head -1)
@@ -64,7 +73,8 @@ jobs:
             echo "mypyc runtime not found (ok if no mypyc deps)"
           fi
           "$PY" -m PyInstaller --onefile sidecar.py \
-            --add-data "config.json${SEP}." "${EXTRA[@]}"
+            --add-data "config.json${SEP}." \
+            --add-data "tessdata${SEP}tessdata" "${EXTRA[@]}"
 
       - uses: subosito/flutter-action@v2
         with:
