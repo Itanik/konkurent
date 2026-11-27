@@ -320,4 +320,74 @@ doc.save(r"$invoice")
     expect(outcome.supplier!.offers, hasLength(2));
     expect(outcome.supplier!.offers.first.itemName, 'Болт М8');
   });
+
+  test('recognize читает отсканированный PDF через OCR', skip: skipReason,
+      () async {
+    // OCR требует системный tesseract (как Ghostscript для lattice).
+    var tessOk = false;
+    try {
+      final r = await Process.run('tesseract', ['--version']);
+      tessOk = r.exitCode == 0;
+    } catch (_) {}
+    if (!tessOk) {
+      markTestSkipped('tesseract не найден в PATH — пропуск');
+    }
+
+    final tmp = Directory.systemTemp.createTempSync('konkurent_ocr');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final pdf = p.join(tmp.path, 'scan.pdf');
+
+    // Синтетический «скан»: PIL рисует счёт с линейками и сохраняет
+    // image-only PDF (без текстового слоя). Код 3 = нет кириллического
+    // шрифта — скипаем, а не падаем (зависит от ОС).
+    final script = '''
+import glob, sys
+cands = []
+for pat in ("/usr/share/fonts/**/DejaVuSans.ttf",
+            "/usr/share/fonts/**/LiberationSans-Regular.ttf",
+            "C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/calibri.ttf"):
+    cands += glob.glob(pat, recursive=True)
+if not cands:
+    sys.exit(3)
+from PIL import Image, ImageDraw, ImageFont
+img = Image.new("RGB", (1000, 800), "white")
+d = ImageDraw.Draw(img)
+f = ImageFont.truetype(cands[0], 22)
+d.text((40, 30), "ООО «Ромашка Плюс»", font=f, fill="black")
+d.text((40, 70), "ИНН 7707083893 КПП 770501001", font=f, fill="black")
+xs = [40, 110, 560, 690, 800, 950]
+ys = [200, 270, 340, 410, 480]
+for y in ys:
+    d.rectangle([xs[0], y, xs[-1], y + 2], fill="black")
+for x in xs:
+    d.rectangle([x, ys[0], x + 2, ys[-1]], fill="black")
+data = [["№", "Товар", "Кол-во", "Ед.", "Сумма"],
+        ["1", "Болт М8", "10", "шт", "500"],
+        ["2", "Гайка М8", "20", "шт", "200"]]
+for r, row in enumerate(data):
+    for c, cell in enumerate(row):
+        d.text((xs[c] + 12, ys[r] + 14), cell, font=f, fill="black")
+img.save(r"$pdf", resolution=72.0)
+''';
+    final gen = await Process.run(python!, ['-c', script]);
+    if (gen.exitCode == 3) {
+      markTestSkipped('кириллический шрифт не найден — пропуск');
+    }
+    expect(gen.exitCode, 0, reason: gen.stderr.toString());
+
+    final bridge = PythonBridge.create();
+    final outcome = await bridge.recognize(pdf);
+    expect(outcome.ok, isTrue, reason: outcome.error);
+    final sup = outcome.supplier!;
+    expect(sup.inn, '7707083893');
+    // КПП сайдкар отдаёт, но блок не хранит — проверяем его на уровне
+    // engine-харнесса (ocr_eval).
+    expect(sup.displayName, contains('Ромашка'));
+    expect(sup.ocrUsed, isTrue, reason: 'скан должен помечаться как OCR');
+    expect(sup.offers, hasLength(2));
+    expect(sup.offers.first.qty, 10);
+    expect(sup.offers.first.unit.toLowerCase(), 'шт');
+    expect(sup.offers.first.sumWithVat, 500);
+    expect(sup.offers[1].sumWithVat, 200);
+  });
 }
