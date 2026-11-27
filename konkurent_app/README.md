@@ -106,8 +106,9 @@ flutter build windows --release
 - `test/format_test.dart` — формат/парсинг чисел.
 - `test/request_items_parse_test.dart` — разбор вставленного списка позиций.
 - `test/sidecar_roundtrip_test.dart` — реальный `sidecar.py`: export → import,
-  recognize xlsx-прайса, определение чужого файла. Пропускается, если нет
-  `../.venv` или `sidecar.py`.
+  recognize xlsx-прайса, определение чужого файла, recognize синтетического
+  отсканированного PDF (OCR; нужен tesseract в PATH, иначе пропуск).
+  Пропускается, если нет `../.venv` или `sidecar.py`.
 - `integration_test/app_test.dart` — UI: редактирование, пересчёт цены,
   сортировка, drag-перестановки. Движок и хранилище подменяются заглушками
   (`FakeFileEngine`, `InMemoryStorageService`).

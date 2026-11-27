@@ -41,6 +41,11 @@ editor backed by the Python recognition engine (`recog.py`, `normalizer.py`,
 - **Ghostscript** (`gs` on Linux, `gswin64c` on Windows) —
   [ghostscript.com](https://ghostscript.com). Required for PDF recognition
   (camelot lattice mode).
+- **Tesseract** (`tesseract` in PATH, v5+) —
+  [tesseract-ocr.github.io](https://tesseract-ocr.github.io/tessdoc/Installation.html).
+  Required for scanned-PDF recognition (OCR). The Russian model is bundled
+  with the app; only the binary is needed (Linux: `pacman -S tesseract`,
+  Windows: [UB Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki)).
 - Python engine dependencies (`requirements.txt`).
 
 The Linux Flutter build additionally needs `clang`, `cmake`, `ninja-build`,
@@ -100,7 +105,10 @@ The app then finds the sidecar next to itself and can run from any directory.
 ## Usage
 
 1. **From an invoice** — drop a file (pdf/xlsx/docx) onto the window. On success a
-   new supplier block appears on the right.
+   new supplier block appears on the right. Scanned PDFs (no text layer) are
+   recognized via OCR — such a block gets an "OCR" badge in its header (minor
+   recognition errors are possible, double-check the numbers); Tesseract is
+   required for these, see the prerequisites above.
 2. **Manually** — fill the request rows on the left or add a supplier with the
    toolbar button. There is always an empty editable row at the bottom: start
    typing in it to create an entry, and a new empty row appears below. The "×"
@@ -208,9 +216,11 @@ invoice (pdf/xlsx/docx) → camelot / pandas → column normalization
 git tag v1.1.0 && git push origin v1.1.0
 ```
 
-**KonkurentApp** builds from CI include the sidecar; Ghostscript is still required
-on the target machine for PDF recognition. Scanned PDFs (no text layer) are not
-recognized — OCR is not supported; the app reports this when you try.
+**KonkurentApp** builds from CI include the sidecar; Ghostscript is still
+required on the target machine for PDF recognition. Scanned PDFs (no text
+layer) are recognized via OCR: the Russian tesseract models are bundled with
+the sidecar, but the Tesseract binary itself must be in `PATH` (same as
+Ghostscript).
 
 ---
 

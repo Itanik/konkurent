@@ -106,8 +106,9 @@ flutter build windows --release
 - `test/format_test.dart` — number formatting/parsing.
 - `test/request_items_parse_test.dart` — parsing a pasted item list.
 - `test/sidecar_roundtrip_test.dart` — real `sidecar.py`: export → import,
-  xlsx price-list recognition, foreign-file detection. Skipped when `../.venv`
-  or `sidecar.py` is missing.
+  xlsx price-list recognition, foreign-file detection, recognition of a
+  synthetic scanned PDF (OCR; needs tesseract in PATH, otherwise skipped).
+  Skipped when `../.venv` or `sidecar.py` is missing.
 - `integration_test/app_test.dart` — UI: editing, price recalculation, sorting,
   drag reordering. Engine and storage are replaced with fakes
   (`FakeFileEngine`, `InMemoryStorageService`).

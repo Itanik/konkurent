@@ -50,7 +50,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 # frozen sidecar for a standalone Flutter bundle (see README for details)
 .venv/bin/pip install pyinstaller
-.venv/bin/pyinstaller --onefile sidecar.py --add-data "config.json:."
+.venv/bin/pyinstaller --onefile sidecar.py --add-data "config.json:." \
+    --add-data "tessdata:tessdata"   # OCR models; see the OCR gotchas below
 ```
 
 ## sidecar.py — Flutter ↔ Python bridge
@@ -65,10 +66,13 @@ stdout elsewhere).
 .venv/bin/python3 sidecar.py --action=import --file=/abs/saved.xlsx
 ```
 
-- `recognize` — PDF (camelot) / xlsx / xls / docx → `{status, supplierName,
-  sourceFileName, inn, kpp, ogrn, offers[]}`. `supplierName`/`inn`/`kpp`/`ogrn`
-  come from `supplier_extract.py` (legal form + checksums; failure to extract is
-  non-fatal — name falls back to the file stem). Errors: `{status: "error", message}`.
+- `recognize` — PDF (camelot; scanned/image-only PDF → OCR via `ocr_recog.py`) /
+  xlsx / xls / docx → `{status, supplierName, sourceFileName, inn, kpp, ogrn,
+  ocr, offers[]}`. `supplierName`/`inn`/`kpp`/`ogrn` come from
+  `supplier_extract.py` (legal form + checksums; failure to extract is
+  non-fatal — name falls back to the file stem); `ocr: true` marks the scanned
+  path (text for requisites comes from OCR, not the text layer).
+  Errors: `{status: "error", message}`.
 - `export` — takes full `AppState` JSON on stdin, calls `recog.fill_template`.
   Offers may carry `priceDriver: "price"` + `priceWithVat`/`priceWithoutVat`:
   then the engine writes the price as a value and the sum as `=цена*кол-во`.
@@ -115,9 +119,22 @@ The standard loop for any change — follow it without being told:
   Quick loop while debugging extraction/parsing: run
   `sidecar.py --action=recognize --file=...` over each PDF and compare the
   supplier name against the file-name prefix. One fixture is a scanned PDF with
-  no text layer — it must fail recognition with the scanned-document hint.
-- **Scanned PDFs are not supported** (no OCR); recognition errors for them
-  carry a hint from `sidecar._scan_hint`.
+  no text layer — it must now be recognized via OCR (correct supplier name and
+  items; `ocr: true` in the JSON).
+- **Scanned PDFs are recognized via OCR** (`ocr_recog.py`, system tesseract).
+  `example_data/scanned_docs/` holds the scanned fixtures: 2 invoices per
+  supplier («мсм», «перфорация»), each supplier having one transcribed invoice
+  (a `.txt` pipe-table / `.xlsx` ground truth next to the PDF) and one blind.
+  The tuning loop is `.venv/bin/python3 ocr_eval.py` (module mode for the fast
+  inner cycle, `--mode sidecar` for the honest contract); exit code 1 means the
+  transcribed «перфорация» invoice failed acceptance (19/19 items, exact
+  qty/unit/sum, INN/KPP). «мсм» scans are best-effort (palette-quantized
+  ~96 DPI + a specific font: digits/items read, some latin-in-cyrillic name
+  noise remains) — a partial result there does not block the merge.
+- `tessdata/` at the repo root is gitignored — download the four tesseract
+  models into it for local OCR work (rus/eng fast + rus_best/eng_best, see
+  `.github/workflows/build.yml` for the URLs); without them OCR falls back to
+  the system tessdata (`ocr_recog._resolve_lang`).
 - The old `.opencode/plans/` refactor plans (tkinter era) were removed — they
   described the deleted frontend. The step-by-step branch/substep/control-point
   convention they documented lives on in the «Feature workflow» section.
@@ -138,6 +155,11 @@ normalizer.py  picks the best camelot table, scores/finds the header row, maps
 supplier_extract.py  supplier identity from invoice text: legal-form name,
            INN (checksum-validated 10/12), KPP, OGRN. PDF via playa (already a
            camelot dep), docx via python-docx, xlsx via pandas.
+           extract_supplier_from_text(text) is the OCR seam (no file access).
+ocr_recog.py  OCR of image-only PDFs: pypdfium2 render -> cv2 line masks ->
+           multi-pass tesseract (full page / header band / per-column strips /
+           per-cell units+names) -> DataFrame via the sidecar._Table contract;
+           also produces the page text for supplier_extract.
 config.json    single source of truth for the output table layout
 sidecar.py  argparse CLI wrapping the above for Flutter (recognize/export/import).
            `import camelot` is lazy so export/import work without the PDF stack.
@@ -199,11 +221,15 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   into the DataFrame but that column is never written to the sheet.
 - **In `normalizer.py`**, `COLUMN_PATTERNS` has no entry for `Цена за ед.`, so
   `map_columns` skips it by design, and a PDF table is only accepted at all if its
-  best-scoring header row reaches 3 (`normalizer.py:191`). Header-column ties now
-  resolve to the *earlier* column (reference «Кол-во шт. (справочно)» must not
-  steal the real «Кол-во»); `normalize_table` also re-joins camelot-stream
+  best-scoring header row reaches 3 (`normalizer.py:191`). Header-column ties
+  resolve to the *earlier* column **unless** one candidate is an exact match of
+  the standard name (+2 bonus, `map_columns`): the scanned «перфорация» invoice
+  has «Кол-во упак.» (col C) before the real «Кол-во» (col E) — substring ties
+  picked the packaging column; exact-match-wins fixes it and also the reference
+  «Кол-во шт. (справочно)» case. `normalize_table` also re-joins camelot-stream
   name fragments around the numeric row and splits qty glued into the unit
-  cell («9 шт»).
+  cell («9 шт»). `_normalize_number`/`sidecar._num_or_none` strip 1С thousand
+  apostrophes (5'265.00).
 - **`extract_with_camelot` runs BOTH flavors and merges tables.** Lattice alone
   missed whole item tables in text-based invoices (1C layout without rules);
   `find_best_table` picks the winner by header score, so merging is safe.
@@ -213,6 +239,53 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
 - **`fill_template(..., meta_values=None)`** — optional `{filename: {label: value}}`
   written into each block's meta rows; used by `sidecar.py` export. Blocks also
   carry `block["filename"]` so meta values can be matched.
+
+## Gotchas in `ocr_recog.py` (scanned-PDF OCR)
+
+- **Tesseract child processes MUST NOT inherit stdout.** `action_recognize` runs
+  under `contextlib.redirect_stdout(sys.stderr)`, but that only rewires the
+  Python-level stream — **fd 1 is inherited by children** and a tesseract that
+  prints to it would poison the JSON channel. `ocr_recog._ocr_words` therefore
+  always uses `subprocess.run(..., capture_output=True)` + temp files for TSV.
+  Keep it that way for any new subprocess call in the sidecar.
+- **Frame lines poison OCR — erase them before reading.** The same digit cell
+  reads perfectly with `psm 7` inside the (erased) cell and fails in *every*
+  psm when the ruling lines are in the crop. `ocr_recog._erase_lines` dilates
+  the cv2 line masks and whitens them; every read (full page, strips, cells)
+  happens on the erased image only.
+- **One tesseract call per context, tuned per role** — the pipeline re-reads the
+  page several times because each context needs different settings: full page
+  psm 4 fast (page text for requisites), header band psm 11 + ×2 upscale read
+  twice (fast AND best) with a per-column pick (`_pick_header_cells` — the мсм
+  font needs best for «Сумма» but fast for «Кол-во», read as «Kon-» by best),
+  unit cells psm 7 + ×3 with a Cyrillic whitelist, name cells psm 6 + ×2 on
+  `rus_best+eng_best` (fixes latin/cyrillic confusion like HIMTEX→НМТЕХ),
+  numeric columns psm 6 strips with a digit whitelist. Changing one role's psm
+  without re-running `ocr_eval.py` will silently regress another supplier.
+- **Real scans are ~96 DPI natively** — rendering at 300 adds nothing (pure
+  interpolation). `RENDER_SCALE = 4` (~380 DPI) is the tuned sweet spot; all
+  pixel thresholds (line clustering, group gap = 12% of page height) assume it.
+- **Table lines are found by crossings, not length.** A short invoice (header +
+  1 item row) has table rules *shorter* than the bank block frames above them;
+  `_detect_grid` keeps horizontals crossing ≥4 verticals and picks the main
+  group by summed crossings. The blind «СМ13391450» fixture guards this.
+- **Pages are glued by the OCR path itself**: a page whose rows contain no
+  header (score < 3) is appended to the previous page's table — camelot never
+  merges across pages and `find_best_table` keeps exactly one table. The tail
+  of the last page («Итого», «Вес по счету»...) is cut by `TAIL_BAND_KEYWORDS`
+  over the full band text — normalizer's summary filter only sees *mapped*
+  columns and misses when «Итого» lands in an unmapped one.
+- **Page text is homoglyph-folded for requisitions** (`_HOMOGLYPHS`): tesseract
+  reads «ООО» as latin «OOO»/«000», and then `supplier_extract` finds no legal
+  form and crowns the *buyer* the supplier. Folding goes into the page text
+  only — item names keep their letters (latin DIN/HIMTEX stays).
+- **tessdata resolution**: `ocr_recog` prefers `SCRIPT_DIR/tessdata` (repo root
+  in dev, `_MEIPASS/tessdata` in a frozen build — the same mechanism as
+  config.json) and falls back to the system tessdata, mapping `rus_best`→`rus`
+  when bundled models are missing (`_resolve_lang`). The repo `tessdata/` is
+  gitignored; CI downloads the four models and bundles them via
+  `--add-data "tessdata:tessdata"` — anything adding a new model must update
+  build.yml AND the manual pyinstaller line in this file.
 
 ## Gotchas in the Flutter app (`konkurent_app/`)
 
@@ -236,15 +309,20 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
 - CI (`.github/workflows/build.yml`) has a `flutter` job (`ubuntu-latest` +
   `windows-2022`): it builds the sidecar with PyInstaller, runs `flutter analyze`
   / `flutter test`, builds the app, copies the sidecar into the bundle and uploads
-  `konkurent-app-*.zip`. Offline UI tests (`integration_test`) are still not run in
-  CI — they need Xvfb on Linux runners.
+  `konkurent-app-*.zip`. Linux runners also apt-install `tesseract-ocr` +
+  `tesseract-ocr-rus` so the OCR sidecar test runs there (Windows runners have
+  no tesseract — the test self-skips). Offline UI tests (`integration_test`) are
+  still not run in CI — they need Xvfb on Linux runners.
 - **PyInstaller must bundle the mypyc runtime from `playa-pdf`.** `camelot` pulls
   in `playa-pdf`, which ships a hash-named extension at the *root* of
   site-packages (`<hash>__mypyc.cpython-*.so` / `.pyd`). PyInstaller does not
   discover it on its own, so a frozen sidecar fails PDF recognition with
   `ModuleNotFoundError: No module named '<hash>_mypyc'`. The CI sidecar step adds
   it explicitly with `--add-binary "$(ls site-packages/*__mypyc*.<so|pyd>):."`;
-  a manual sidecar build needs the same flag. Keep it.
+  a manual sidecar build needs the same flag. Keep it. The sidecar also bundles
+  the four tesseract models via `--add-data "tessdata:tessdata"` (CI downloads
+  them; see the OCR gotchas above) — without it a frozen sidecar falls back to
+  the end user's system tessdata and loses the best-name reads.
 - **The grid is address-driven, not index-driven.** `tableLayoutProvider`
   (`lib/providers/table_layout_provider.dart`) computes RowGroups per request
   item (height = max linked offers across suppliers), an unlinked zone and
@@ -338,4 +416,6 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   (`gs` on Linux/macOS, `gswin64c` on Windows) or camelot's lattice mode fails.
   `sidecar.py` does not fail early on this (stream mode works without it) —
   when PDF recognition fails and Ghostscript is missing, it appends an
-  install hint to the error message (`_gs_hint`).
+  install hint to the error message (`_gs_hint`). Likewise **tesseract** must
+  be on `PATH` for scanned-PDF OCR (`_tess_hint` mirrors the pattern; the
+  Russian models are bundled with the sidecar, only the binary is needed).
