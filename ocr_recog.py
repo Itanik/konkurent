@@ -47,7 +47,7 @@ UNIT_INSET = 4          # px отступ от границ ячейки при 
 STRIP_MARGIN = 40       # px за границу колонки (числа шире центра линейки)
 WORD_MIN_CONF = 0       # в TSV -1 у пустых слов
 LINE_CLUSTER_TOL = 6    # px: разброс линий одной границы (при scale 4)
-TABLE_GROUP_GAP = 200   # px: разрыв по y между таблицами/блоками страницы
+TABLE_GROUP_GAP = 0.12  # доля высоты страницы: разрыв между таблицами/блоками
 ERASE_DILATE = 3        # px расширение маски линеек при стирании
 GRID_MIN_COLS = 4       # минимальное число границ колонок
 GRID_MIN_ROWS = 3       # таблица = шапка + хотя бы одна строка данных
@@ -243,8 +243,9 @@ def _detect_grid(gray):
     if len(table_h) < GRID_MIN_ROWS:
         return None, vmask, hmask
     groups, cur = [], [table_h[0]]
+    gap = gray.shape[0] * TABLE_GROUP_GAP
     for hc in table_h[1:]:
-        if hc["pos"] - cur[-1]["pos"] > TABLE_GROUP_GAP:
+        if hc["pos"] - cur[-1]["pos"] > gap:
             groups.append(cur)
             cur = [hc]
         else:
