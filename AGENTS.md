@@ -293,6 +293,19 @@ through the same mechanism — and must be added to the `--add-data` flags in CI
   state (AppState) must never depend on them; they are not persisted. The
   secondary pair is only shown for suppliers on the gross basis (net-basis
   suppliers already show net as primary).
+- **sqlite3 API quirks (SupplierDb).** `Database.execute` takes no bound
+  parameters — use `prepare()` + `stmt.execute([...])` + `dispose()`
+  (`select(sql, [params])` is positional). The meta-history prune DELETE must
+  be scoped by `inn AND field` — an unscoped `rowid NOT IN (top-5)` silently
+  wiped the history of the supplier's OTHER fields. And `LIKE` in SQLite is
+  ASCII-case-insensitive only — cyrillic name search filters in Dart
+  (`searchNames`), never in SQL.
+- **Best-variant xlsx cells mirror config.json geometry** (`app.dart _save`):
+  the excel sum cell of a pick = column `5 + 6*supplierIdx + 5`, row
+  `5 + layoutRow` — the constants (4 fixed columns → block at 5, 6 block
+  columns → sum last, data from row 5) are hardcoded in TWO places: here
+  and in `build_comparison_xlsx`. Changing `config.json` columns means
+  updating both (plus the engine's own block math).
 
 ## Docs
 
