@@ -330,7 +330,10 @@ doc.save(r"$invoice")
       tessOk = r.exitCode == 0;
     } catch (_) {}
     if (!tessOk) {
+      // markTestSkipped НЕ останавливает тело теста — обязательно return,
+      // иначе Windows CI (без tesseract) фейлит помеченный тест.
       markTestSkipped('tesseract не найден в PATH — пропуск');
+      return;
     }
 
     final tmp = Directory.systemTemp.createTempSync('konkurent_ocr');
@@ -372,6 +375,7 @@ img.save(r"$pdf", resolution=72.0)
     final gen = await Process.run(python!, ['-c', script]);
     if (gen.exitCode == 3) {
       markTestSkipped('кириллический шрифт не найден — пропуск');
+      return;
     }
     expect(gen.exitCode, 0, reason: gen.stderr.toString());
 
