@@ -324,9 +324,12 @@ def _find_inn_near(text, line_idx, window=2):
     return None
 
 
-def extract_supplier(path, legal_forms=None):
-    """Реквизиты поставщика из файла: {name, inn, kpp, ogrn} (None если нет)."""
-    text = extract_text(path)
+def extract_supplier_from_text(text, legal_forms=None):
+    """Реквизиты поставщика из текста: {name, inn, kpp, ogrn} (None если нет).
+
+    Отдельно от extract_supplier, чтобы OCR-путь (текст собирает tesseract)
+    использовал ту же логику, что и текстовый слой файла.
+    """
     chosen = _choose_supplier_candidate(text, legal_forms)
     inn = _find_inn_near(text, chosen[2]) if chosen else None
     if inn is None:
@@ -337,3 +340,8 @@ def extract_supplier(path, legal_forms=None):
         "kpp": find_kpp(text),
         "ogrn": find_ogrn(text),
     }
+
+
+def extract_supplier(path, legal_forms=None):
+    """Реквизиты поставщика из файла: {name, inn, kpp, ogrn} (None если нет)."""
+    return extract_supplier_from_text(extract_text(path), legal_forms)

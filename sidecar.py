@@ -86,16 +86,28 @@ def _gs_hint(path):
     return ""
 
 
+def _tess_hint():
+    # OCR отсканированных документов идёт через системный tesseract (как
+    # Ghostscript для lattice) — подсказываем, если его нет в PATH.
+    if shutil.which("tesseract") is None:
+        return ("; для распознавания отсканированных документов нужен Tesseract"
+                " (tesseract не найден в PATH) — см. README")
+    return ""
+
+
 def _scan_hint(path):
-    # У отсканированного PDF нет текстового слоя — распознавание без OCR
-    # обречено. Проверяем дёшево (первые страницы), только для PDF.
+    # У отсканированного PDF нет текстового слоя — без OCR таблиц не найти.
+    # Проверяем дёшево (первые страницы), только для PDF; сюда попадаем,
+    # когда OCR уже пробовал запуститься, но таблицу не нашёл.
     if os.path.splitext(path)[1].lower() != ".pdf":
         return ""
     try:
-        from supplier_extract import extract_text
-        if len(extract_text(path, max_pages=2).strip()) < 10:
-            return ("; похоже, документ отсканирован (нет текстового слоя)"
-                    " — OCR не поддерживается")
+        from ocr_recog import is_scanned
+        if is_scanned(path):
+            if shutil.which("tesseract") is None:
+                return ("; похоже, документ отсканирован (нет текстового слоя) —"
+                        " для распознавания нужен Tesseract" + _tess_hint())
+            return ("; похоже, документ отсканирован — OCR не нашёл в нём таблицу")
     except Exception:
         pass
     return ""
@@ -114,7 +126,9 @@ def _num_or_none(value):
         return None
     if isinstance(value, (int, float)):
         return round(float(value), 2)
-    s = str(value).strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
+    s = str(value).strip().replace("\xa0", "").replace(" ", "")
+    s = s.replace("'", "").replace("’", "")  # 1С печатает разряды апострофами
+    s = s.replace(",", ".")
     if not s or s.lower() in ("nan", "none", "-"):
         return None
     try:
@@ -135,10 +149,19 @@ def load_config():
 
 
 def _tables_for(path):
+    """(таблицы, ocr_text|None) — ocr_text задан, если PDF был распознан OCR."""
     ext = os.path.splitext(path)[1].lower()
     if ext == ".pdf":
+        import ocr_recog
+        if ocr_recog.is_scanned(path):
+            try:
+                tables, ocr_text = ocr_recog.extract_with_ocr(path)
+            except ocr_recog.OcrError as e:
+                _fail(f"Не удалось распознать отсканированный документ: {e}"
+                      + _tess_hint())
+            return tables, ocr_text
         import recog
-        return recog.extract_with_camelot(path)
+        return recog.extract_with_camelot(path), None
 
     if ext in (".xlsx", ".xls", ".xlsm"):
         import pandas as pd
@@ -146,7 +169,7 @@ def _tables_for(path):
         tables = []
         for _, df in sheets.items():
             tables.append(_Table(df.fillna("")))
-        return tables
+        return tables, None
 
     if ext == ".docx":
         import pandas as pd
@@ -160,7 +183,7 @@ def _tables_for(path):
             rows = [[cell.text for cell in row.cells] for row in t.rows]
             if rows:
                 tables.append(_Table(pd.DataFrame(rows)))
-        return tables
+        return tables, None
 
     _fail(f"Неподдерживаемый формат: {ext or 'без расширения'}")
 
@@ -173,7 +196,7 @@ def action_recognize(path, legal_forms_path=None):
 
     filename = os.path.basename(path)
     with _stdout_to_stderr():
-        tables = _tables_for(path)
+        tables, ocr_text = _tables_for(path)
     if not tables:
         _fail("Таблицы в файле не найдены" + _gs_hint(path) + _scan_hint(path))
 
@@ -194,13 +217,16 @@ def action_recognize(path, legal_forms_path=None):
         })
 
     # Реквизиты поставщика из «шапки» счёта (юридическая форма, ИНН/КПП/ОГРН).
-    # Сбой извлечения не должен валить распознавание позиций.
+    # Сбой извлечения не должен валить распознавание позиций. У сканов
+    # текстового слоя нет — берём текст, собранный OCR (ocr_recog).
     supplier_name = os.path.splitext(filename)[0]
     inn = kpp = ogrn = None
     try:
-        from supplier_extract import extract_supplier, load_legal_forms
+        from supplier_extract import (extract_supplier, extract_supplier_from_text,
+                                      load_legal_forms)
         forms = load_legal_forms(legal_forms_path) if legal_forms_path else None
-        info = extract_supplier(path, forms)
+        info = (extract_supplier_from_text(ocr_text, forms) if ocr_text
+                else extract_supplier(path, forms))
         if info.get("name"):
             supplier_name = info["name"]
         inn, kpp, ogrn = info.get("inn"), info.get("kpp"), info.get("ogrn")
@@ -214,6 +240,7 @@ def action_recognize(path, legal_forms_path=None):
         "inn": inn,
         "kpp": kpp,
         "ogrn": ogrn,
+        "ocr": ocr_text is not None,
         "offers": offers,
     })
 
