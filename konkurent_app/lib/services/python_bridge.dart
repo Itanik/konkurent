@@ -194,6 +194,8 @@ class PythonBridge implements FileEngine {
           sourceFileNames:
               sourceFile == null || sourceFile.isEmpty ? [] : [sourceFile],
           inn: inn == null || inn.isEmpty ? null : inn,
+          // Сканированные PDF распознаются через OCR — помечаем блок.
+          ocrUsed: json['ocr'] == true,
           offers: offers.isEmpty ? [Offer.empty()] : offers,
         ),
       );

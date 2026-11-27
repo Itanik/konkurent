@@ -353,6 +353,7 @@ class SupplierBlock {
     this.inn,
     this.withoutVat = false,
     this.vatMovedToNet = false,
+    this.ocrUsed = false,
     this.meta = const SupplierMeta(),
     this.offers = const [],
   });
@@ -373,6 +374,9 @@ class SupplierBlock {
   /// Кнопка «позиции без НДС» нажата: значения перенесены на «без НДС» и
   /// колонка с НДС пересчитана; повторное нажатие вернёт как было.
   final bool vatMovedToNet;
+
+  /// Хотя бы один счёт блока распознан через OCR (отсканированный PDF).
+  final bool ocrUsed;
   final SupplierMeta meta;
   final List<Offer> offers;
 
@@ -402,6 +406,7 @@ class SupplierBlock {
     bool clearInn = false,
     bool? withoutVat,
     bool? vatMovedToNet,
+    bool? ocrUsed,
     SupplierMeta? meta,
     List<Offer>? offers,
   }) {
@@ -412,6 +417,7 @@ class SupplierBlock {
       inn: clearInn ? null : (inn ?? this.inn),
       withoutVat: withoutVat ?? this.withoutVat,
       vatMovedToNet: vatMovedToNet ?? this.vatMovedToNet,
+      ocrUsed: ocrUsed ?? this.ocrUsed,
       meta: meta ?? this.meta,
       offers: offers ?? this.offers,
     );
@@ -424,6 +430,7 @@ class SupplierBlock {
         'inn': inn,
         'withoutVat': withoutVat,
         'vatMovedToNet': vatMovedToNet,
+        'ocrUsed': ocrUsed,
         'meta': meta.toJson(),
         'offers': offers.map((o) => o.toJson()).toList(),
       };
@@ -442,6 +449,7 @@ class SupplierBlock {
       inn: json['inn'] as String?,
       withoutVat: json['withoutVat'] as bool? ?? false,
       vatMovedToNet: json['vatMovedToNet'] as bool? ?? false,
+      ocrUsed: json['ocrUsed'] as bool? ?? false,
       meta: SupplierMeta.fromJson(json['meta'] as Map<String, dynamic>?),
       offers: ((json['offers'] as List?) ?? [])
           .map((e) => Offer.fromJson(e as Map<String, dynamic>))

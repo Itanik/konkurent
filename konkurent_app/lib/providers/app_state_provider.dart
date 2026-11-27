@@ -488,6 +488,7 @@ class AppStateNotifier extends Notifier<AppState> {
       return s.copyWith(
         offers: [...s.offers, ...fresh],
         sourceFileNames: files.toList(growable: false),
+        ocrUsed: s.ocrUsed || incoming.ocrUsed,
       );
     });
     autoLinkOffers();
@@ -542,6 +543,7 @@ class AppStateNotifier extends Notifier<AppState> {
       return s.copyWith(
         offers: _trimTrailingOffers(offers),
         sourceFileNames: files.toList(growable: false),
+        ocrUsed: s.ocrUsed || incoming.ocrUsed,
       );
     });
   }

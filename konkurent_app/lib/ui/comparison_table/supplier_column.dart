@@ -254,6 +254,33 @@ class SupplierColumn extends ConsumerWidget {
                           Icon(Icons.drag_indicator, size: m.dragIconSize),
                     ),
                   ),
+                  // Счёт пришёл со скана — OCR мог ошибиться в мелочах.
+                  if (supplier.ocrUsed)
+                    Padding(
+                      key: ValueKey('supplier.${supplier.id}.ocr'),
+                      padding: EdgeInsets.only(right: 2 * m.scale),
+                      child: Tooltip(
+                        message: 'Распознано через OCR (отсканированный счёт)',
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 3 * m.scale, vertical: m.scale),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .secondaryContainer,
+                            borderRadius:
+                                BorderRadius.circular(4 * m.scale),
+                          ),
+                          child: Text(
+                            'OCR',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontSize: 9 * m.scale),
+                          ),
+                        ),
+                      ),
+                    ),
                   Expanded(
                     child: EditableCell(
                       testId: 'supplier.${supplier.id}.name',
