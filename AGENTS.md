@@ -118,9 +118,9 @@ The standard loop for any change — follow it without being told:
   no text layer — it must fail recognition with the scanned-document hint.
 - **Scanned PDFs are not supported** (no OCR); recognition errors for them
   carry a hint from `sidecar._scan_hint`.
-- `scripts`-style checks used by the past refactor plans live in `.opencode/plans/`
-  (`PLAN*.md`) — those files document the step-by-step branch/substep/control-point
-  convention the maintainer follows, including the exact verification commands.
+- The old `.opencode/plans/` refactor plans (tkinter era) were removed — they
+  described the deleted frontend. The step-by-step branch/substep/control-point
+  convention they documented lives on in the «Feature workflow» section.
 - Releases: `git tag v1.0.0 && git push origin v1.0.0` → `.github/workflows/build.yml`
   builds the Flutter app for Linux+Windows (sidecar bundled), zips it, and publishes
   a GitHub Release with auto notes. Pushing to `main` alone only produces artifacts,
