@@ -27,6 +27,7 @@ def _normalize_number(s):
     if not s or s in ("", "nan", "None"):
         return ""
     s = s.replace("\xa0", " ").replace(" ", "")
+    s = re.sub(r"['’ʼ]", "", s)  # 1С печатает разряды апострофами: 5'265.00
     s = s.replace(",", ".")
     try:
         return str(float(s))
@@ -101,6 +102,13 @@ def map_columns(header_row):
                 existing_cell = str(header_row[existing_idx]).lower().strip()
                 new_score = sum(1 for p in COLUMN_PATTERNS[best_match] if p in cell_lower)
                 old_score = sum(1 for p in COLUMN_PATTERNS[best_match] if p in existing_cell)
+                # Точное совпадение с эталонным названием бьёт подстроки:
+                # «Кол-во» (колонка E) против «Кол-во упак.» (C) у сканов
+                # и «Кол-во шт. (справочно)» у текстовых 1С-счетов.
+                if cell_lower == best_match.lower():
+                    new_score += 2
+                if existing_cell == best_match.lower():
+                    old_score += 2
                 # При равенстве побеждает более ранняя колонка: справочные
                 # «Кол-во шт. (справочно)» не должны отбирать место у «Кол-во».
                 if new_score > old_score:
